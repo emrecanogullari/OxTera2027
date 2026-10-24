@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Emre_understanding.md",
+                "file": "PeterNotes.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Emre_understanding"
+              "title": "PeterNotes"
             }
           }
         ]
@@ -80,7 +80,8 @@
       }
     ],
     "direction": "horizontal",
-    "width": 200
+    "width": 300,
+    "collapsed": true
   },
   "right": {
     "id": "3624293276884003",
@@ -188,9 +189,10 @@
   "active": "489d18e0f360d211",
   "lastOpenFiles": [
     "Emre_understanding.md",
-    "PeterNotes.md",
+    "Peter_understanding.md",
+    "chess-think-time-plan.md",
     "EmreNotes.md",
-    "AniketNotes.md",
+    "PeterNotes.md",
     "Welcome.md"
   ]
 }
