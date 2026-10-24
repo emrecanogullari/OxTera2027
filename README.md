@@ -4,7 +4,7 @@ A Manifest V3 browser extension that, while you practise against a bot on Liches
 
 It comments only on time. It never suggests a move. It stays inactive in games against humans.
 
-The working spec is [docs/project-plan.md](docs/project-plan.md). Stockfish workers: [database_work/stockfish_access.md](database_work/stockfish_access.md).
+The working spec is [docs/project-plan.md](docs/project-plan.md). Stockfish workers: [database_work/stockfish_access.md](database_work/stockfish_access.md). Outcome models: [database_work/model_training_access.md](database_work/model_training_access.md).
 
 ## Repo layout
 
