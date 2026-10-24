@@ -1,3 +1,9 @@
+# Per-person Obsidian window layout. Changes every time the vault is opened.
+OxHack_Obsidian_Vault/.obsidian/*
+
+# Compiled engine
+Emre/build/
+
 .venv/
 venv/
 __pycache__/
