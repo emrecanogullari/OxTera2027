@@ -2,7 +2,11 @@
 
 This is the working Tiger Cloud database for Clock Coach. Your job is to run Stockfish MultiPV on positions we already reconstructed, then write difficulty features back. You do **not** need to parse PGN or compute think time.
 
+Code lives in **`Peter/`** (same level as `Aniket/` and `Emre/`). Run Python and `tiger db query -f sql/...` from that folder.
+
 Service is tagged **DEV** (writes are allowed). Do not point the Chrome extension at these tables.
+
+Outcome / blunder labels are already in `move_outcomes`. That is a different teammate’s job: [model_training_access.md](model_training_access.md). Do not overwrite those tables.
 
 ## Connect
 
@@ -39,7 +43,7 @@ tiger db uri db-44476
 
 First connect will prompt for the `tsdbadmin` password. Save it with `tiger db save-password` so you are not pasting it into scripts. If you need a URI with the password for `psycopg`, `tiger db uri db-44476 --with-password` — treat that string as a secret; do not commit it.
 
-Python:
+Python (from `Peter/`):
 
 ```python
 import subprocess, psycopg
@@ -51,24 +55,29 @@ uri = subprocess.check_output(
 conn = psycopg.connect(uri)
 ```
 
-Repo helper (same URI): `from ingest.load_tiger import tiger_uri`.
+Repo helper (same URI, only if `Peter/` is on `PYTHONPATH` or is the cwd): `from ingest.load_tiger import tiger_uri`.
 
 ## What is already in the database
 
-Probe slice: **1,000** rated Lichess blitz games from `lichess_db_standard_rated_2026-09`, filters `180+0` / `300+0`, Elo 1000–2200, `Event = Rated Blitz game`, `Termination = Normal`, clocks + evals present.
+Probe slice: **1,000** rated Lichess blitz games from `lichess_db_standard_rated_2026-09`, filters `180+0` / `300+0`, Elo 1000–2200, `Event = Rated Blitz game`, `Termination = Normal`, clocks + evals present. Counts below are live as of the last seed.
 
-| Table | Rows (approx.) | You need it? |
+| Table | Rows | You need it? |
 |---|---|---|
-| `games` | 1,000 | ratings, `base`/`inc` |
+| `games` | 1,000 (556× `180+0`, 444× `300+0`) | ratings, `base`/`inc` |
 | `moves` | 62,662 | SAN, clock after the move, Lichess eval |
-| `move_metrics` | 62,662 | think time, clock fraction, ply-phase, success label |
-| `move_replay` | ~62,483 | **`fen_before`**, material, previous thinks, log clocks |
-| `engine_features` | one row per replayed ply | **write your Stockfish output here** |
-| `lookup_budgets` | 106 | ignore (clock-only test of the extension table) |
+| `move_metrics` | 62,662 | think time, clock fraction, ply-phase |
+| `move_replay` | 62,483 | **`fen_before`**, material, previous thinks, log clocks |
+| `engine_features` | 62,483 | **write Stockfish here**; `gap` is still all NULL |
+| `move_outcomes` | 62,662 | ignore (blunder / win / think-time labels) |
+| `lookup_budgets` | 106 | ignore (clock-only extension cheat-sheet) |
+
+Views `model_features`, `model_labels`, `model_training_rows` are for the modelling teammate, not for Stockfish writes.
 
 **7 games** did not fully replay (SAN gap or illegal move). They have `moves` but missing tail rows in `move_replay` / `engine_features`. Skip them.
 
 Grain for everything you care about: **`(game_id, ply)`**. `ply` is 1-based half-move index. `fen_before` is the position **before** that ply’s move (the position the player was thinking about).
+
+There is no demo / playground table. Only the chess tables above.
 
 ## Position you should analyse
 
@@ -145,13 +154,14 @@ SET
 WHERE game_id = $1 AND ply = $2;
 ```
 
-Batch updates in a transaction. Do not `TRUNCATE engine_features` — that drops FENs.
+Batch updates in a transaction. Do not `TRUNCATE engine_features` — that drops FENs. Do not `TRUNCATE` or `DROP` `games`, `moves`, `move_metrics`, `move_replay`, or `move_outcomes`.
 
 ## Rebuild FEN / material (only if replay is empty)
 
 From `Peter/`, Python 3.11+, packages `chess` and `psycopg`:
 
 ```powershell
+cd Peter
 python -m unittest annotate.tests.test_replay
 python -m annotate.build_replay_features
 tiger db query db-44476 -f sql/007_seed_engine_features.sql
