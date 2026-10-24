@@ -26,7 +26,7 @@ Also stored, same Lichess cutoffs:
 
 Win percent is the Lichess curve already in `wp_from_cp`. First ply of a game often has `blunder IS NULL` (no eval before the move). Drop those rows for the blunder model.
 
-Rebuild labels after metrics change:
+Rebuild labels after metrics change (from `Peter/`):
 
 ```powershell
 python -m annotate.build_outcomes

@@ -149,7 +149,7 @@ Batch updates in a transaction. Do not `TRUNCATE engine_features` — that drops
 
 ## Rebuild FEN / material (only if replay is empty)
 
-From repo root, Python 3.11+, packages `chess` and `psycopg`:
+From `Peter/`, Python 3.11+, packages `chess` and `psycopg`:
 
 ```powershell
 python -m unittest annotate.tests.test_replay

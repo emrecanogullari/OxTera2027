@@ -24,7 +24,7 @@ Filters (frozen):
 
 ## 0. Prove the parser on the laptop
 
-From the repo root (PowerShell):
+From `Peter/` (PowerShell):
 
 ```powershell
 python -m unittest ingest.tests.test_ingest
