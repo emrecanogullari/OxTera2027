@@ -1,0 +1,10 @@
+chess>=1.10            # python-chess
+zstandard>=0.22
+requests>=2.31
+pandas>=2.0
+pyarrow>=14
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+tqdm>=4.66
+pytest>=7
