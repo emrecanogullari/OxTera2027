@@ -1,0 +1,638 @@
+{
+  "180+0|1000|endgame|10to30|none": {
+    "n": 110,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1000|endgame|30to60|none": {
+    "n": 88,
+    "p50": 3,
+    "p75": 5,
+    "budget": 5
+  },
+  "180+0|1000|endgame|lt10|none": {
+    "n": 27,
+    "p50": 1,
+    "p75": 2,
+    "budget": 2
+  },
+  "180+0|1000|middlegame|10to30|none": {
+    "n": 55,
+    "p50": 4,
+    "p75": 9,
+    "budget": 9
+  },
+  "180+0|1000|middlegame|30to60|none": {
+    "n": 387,
+    "p50": 4,
+    "p75": 7,
+    "budget": 7
+  },
+  "180+0|1000|middlegame|gt60|none": {
+    "n": 880,
+    "p50": 4,
+    "p75": 6,
+    "budget": 6
+  },
+  "180+0|1000|opening|gt60|none": {
+    "n": 790,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "180+0|1200|endgame|10to30|none": {
+    "n": 98,
+    "p50": 2.5,
+    "p75": 4,
+    "budget": 4
+  },
+  "180+0|1200|endgame|30to60|none": {
+    "n": 227,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1200|endgame|gt60|none": {
+    "n": 14,
+    "p50": 2,
+    "p75": 2,
+    "budget": 2
+  },
+  "180+0|1200|endgame|lt10|none": {
+    "n": 16,
+    "p50": 1,
+    "p75": 2,
+    "budget": 2
+  },
+  "180+0|1200|middlegame|10to30|none": {
+    "n": 48,
+    "p50": 3,
+    "p75": 6.25,
+    "budget": 6.25
+  },
+  "180+0|1200|middlegame|30to60|none": {
+    "n": 442,
+    "p50": 4,
+    "p75": 7,
+    "budget": 7
+  },
+  "180+0|1200|middlegame|gt60|none": {
+    "n": 1221,
+    "p50": 3,
+    "p75": 6,
+    "budget": 6
+  },
+  "180+0|1200|opening|gt60|none": {
+    "n": 975,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1400|endgame|10to30|none": {
+    "n": 297,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1400|endgame|30to60|none": {
+    "n": 502,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "180+0|1400|endgame|gt60|none": {
+    "n": 110,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1400|endgame|lt10|none": {
+    "n": 62,
+    "p50": 1,
+    "p75": 2,
+    "budget": 2
+  },
+  "180+0|1400|middlegame|10to30|none": {
+    "n": 85,
+    "p50": 4,
+    "p75": 7,
+    "budget": 7
+  },
+  "180+0|1400|middlegame|30to60|none": {
+    "n": 890,
+    "p50": 3,
+    "p75": 6,
+    "budget": 6
+  },
+  "180+0|1400|middlegame|gt60|none": {
+    "n": 2707,
+    "p50": 3,
+    "p75": 5,
+    "budget": 5
+  },
+  "180+0|1400|opening|gt60|none": {
+    "n": 1838,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1600|endgame|10to30|none": {
+    "n": 338,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1600|endgame|30to60|none": {
+    "n": 520,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "180+0|1600|endgame|gt60|none": {
+    "n": 71,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1600|endgame|lt10|none": {
+    "n": 83,
+    "p50": 1,
+    "p75": 2,
+    "budget": 2
+  },
+  "180+0|1600|middlegame|10to30|none": {
+    "n": 66,
+    "p50": 2,
+    "p75": 6.75,
+    "budget": 6.75
+  },
+  "180+0|1600|middlegame|30to60|none": {
+    "n": 725,
+    "p50": 4,
+    "p75": 7,
+    "budget": 7
+  },
+  "180+0|1600|middlegame|gt60|none": {
+    "n": 2786,
+    "p50": 3,
+    "p75": 5,
+    "budget": 5
+  },
+  "180+0|1600|opening|gt60|none": {
+    "n": 1833,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1800|endgame|10to30|none": {
+    "n": 461,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1800|endgame|30to60|none": {
+    "n": 718,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "180+0|1800|endgame|gt60|none": {
+    "n": 135,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|1800|endgame|lt10|none": {
+    "n": 202,
+    "p50": 1,
+    "p75": 2,
+    "budget": 2
+  },
+  "180+0|1800|middlegame|10to30|none": {
+    "n": 133,
+    "p50": 3,
+    "p75": 7,
+    "budget": 7
+  },
+  "180+0|1800|middlegame|30to60|none": {
+    "n": 823,
+    "p50": 4,
+    "p75": 7,
+    "budget": 7
+  },
+  "180+0|1800|middlegame|gt60|none": {
+    "n": 3007,
+    "p50": 3,
+    "p75": 5,
+    "budget": 5
+  },
+  "180+0|1800|middlegame|lt10|none": {
+    "n": 9,
+    "p50": 3,
+    "p75": 4,
+    "budget": 4
+  },
+  "180+0|1800|opening|gt60|none": {
+    "n": 1730,
+    "p50": 1,
+    "p75": 2,
+    "budget": 2
+  },
+  "180+0|2000|endgame|10to30|none": {
+    "n": 326,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "180+0|2000|endgame|30to60|none": {
+    "n": 420,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "180+0|2000|endgame|gt60|none": {
+    "n": 49,
+    "p50": 2,
+    "p75": 5,
+    "budget": 5
+  },
+  "180+0|2000|endgame|lt10|none": {
+    "n": 111,
+    "p50": 1,
+    "p75": 2,
+    "budget": 2
+  },
+  "180+0|2000|middlegame|10to30|none": {
+    "n": 123,
+    "p50": 3,
+    "p75": 6,
+    "budget": 6
+  },
+  "180+0|2000|middlegame|30to60|none": {
+    "n": 629,
+    "p50": 4,
+    "p75": 8,
+    "budget": 8
+  },
+  "180+0|2000|middlegame|gt60|none": {
+    "n": 1898,
+    "p50": 3,
+    "p75": 6,
+    "budget": 6
+  },
+  "180+0|2000|middlegame|lt10|none": {
+    "n": 6,
+    "p50": 2,
+    "p75": 2,
+    "budget": 2
+  },
+  "180+0|2000|opening|gt60|none": {
+    "n": 1204,
+    "p50": 1,
+    "p75": 2,
+    "budget": 2
+  },
+  "180+0|2200|middlegame|gt60|none": {
+    "n": 15,
+    "p50": 2,
+    "p75": 6,
+    "budget": 6
+  },
+  "180+0|2200|opening|gt60|none": {
+    "n": 5,
+    "p50": 1,
+    "p75": 1,
+    "budget": 1
+  },
+  "300+0|1000|endgame|10to30|none": {
+    "n": 145,
+    "p50": 3,
+    "p75": 5,
+    "budget": 5
+  },
+  "300+0|1000|endgame|30to60|none": {
+    "n": 193,
+    "p50": 3,
+    "p75": 6,
+    "budget": 6
+  },
+  "300+0|1000|endgame|gt60|none": {
+    "n": 43,
+    "p50": 2,
+    "p75": 3.5,
+    "budget": 3.5
+  },
+  "300+0|1000|endgame|lt10|none": {
+    "n": 45,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "300+0|1000|middlegame|10to30|none": {
+    "n": 61,
+    "p50": 7,
+    "p75": 12,
+    "budget": 12
+  },
+  "300+0|1000|middlegame|30to60|none": {
+    "n": 420,
+    "p50": 5,
+    "p75": 10,
+    "budget": 10
+  },
+  "300+0|1000|middlegame|gt60|none": {
+    "n": 1224,
+    "p50": 5,
+    "p75": 9,
+    "budget": 9
+  },
+  "300+0|1000|opening|gt60|none": {
+    "n": 980,
+    "p50": 3,
+    "p75": 6,
+    "budget": 6
+  },
+  "300+0|1200|endgame|10to30|none": {
+    "n": 262,
+    "p50": 2,
+    "p75": 5,
+    "budget": 5
+  },
+  "300+0|1200|endgame|30to60|none": {
+    "n": 611,
+    "p50": 3,
+    "p75": 5,
+    "budget": 5
+  },
+  "300+0|1200|endgame|gt60|none": {
+    "n": 188,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "300+0|1200|endgame|lt10|none": {
+    "n": 49,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "300+0|1200|middlegame|10to30|none": {
+    "n": 38,
+    "p50": 6.5,
+    "p75": 10.75,
+    "budget": 10.75
+  },
+  "300+0|1200|middlegame|30to60|none": {
+    "n": 597,
+    "p50": 5,
+    "p75": 9,
+    "budget": 9
+  },
+  "300+0|1200|middlegame|gt60|none": {
+    "n": 2672,
+    "p50": 4,
+    "p75": 8,
+    "budget": 8
+  },
+  "300+0|1200|opening|gt60|none": {
+    "n": 1843,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "300+0|1400|endgame|10to30|none": {
+    "n": 176,
+    "p50": 2,
+    "p75": 5,
+    "budget": 5
+  },
+  "300+0|1400|endgame|30to60|none": {
+    "n": 285,
+    "p50": 3,
+    "p75": 6,
+    "budget": 6
+  },
+  "300+0|1400|endgame|gt60|none": {
+    "n": 116,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "300+0|1400|endgame|lt10|none": {
+    "n": 89,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "300+0|1400|middlegame|10to30|none": {
+    "n": 83,
+    "p50": 4,
+    "p75": 8,
+    "budget": 8
+  },
+  "300+0|1400|middlegame|30to60|none": {
+    "n": 481,
+    "p50": 6,
+    "p75": 11,
+    "budget": 11
+  },
+  "300+0|1400|middlegame|gt60|none": {
+    "n": 1665,
+    "p50": 5,
+    "p75": 8,
+    "budget": 8
+  },
+  "300+0|1400|middlegame|lt10|none": {
+    "n": 10,
+    "p50": 2.5,
+    "p75": 7.75,
+    "budget": 7.75
+  },
+  "300+0|1400|opening|gt60|none": {
+    "n": 1181,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "300+0|1600|endgame|10to30|none": {
+    "n": 287,
+    "p50": 2,
+    "p75": 5,
+    "budget": 5
+  },
+  "300+0|1600|endgame|30to60|none": {
+    "n": 497,
+    "p50": 3,
+    "p75": 7,
+    "budget": 7
+  },
+  "300+0|1600|endgame|gt60|none": {
+    "n": 124,
+    "p50": 3,
+    "p75": 5,
+    "budget": 5
+  },
+  "300+0|1600|endgame|lt10|none": {
+    "n": 71,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "300+0|1600|middlegame|10to30|none": {
+    "n": 68,
+    "p50": 6,
+    "p75": 9,
+    "budget": 9
+  },
+  "300+0|1600|middlegame|30to60|none": {
+    "n": 603,
+    "p50": 5,
+    "p75": 11,
+    "budget": 11
+  },
+  "300+0|1600|middlegame|gt60|none": {
+    "n": 2364,
+    "p50": 4,
+    "p75": 9,
+    "budget": 9
+  },
+  "300+0|1600|middlegame|lt10|none": {
+    "n": 12,
+    "p50": 3,
+    "p75": 5.25,
+    "budget": 5.25
+  },
+  "300+0|1600|opening|gt60|none": {
+    "n": 1632,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "300+0|1800|endgame|10to30|none": {
+    "n": 258,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "300+0|1800|endgame|30to60|none": {
+    "n": 550,
+    "p50": 3,
+    "p75": 5,
+    "budget": 5
+  },
+  "300+0|1800|endgame|gt60|none": {
+    "n": 122,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "300+0|1800|endgame|lt10|none": {
+    "n": 100,
+    "p50": 1,
+    "p75": 2,
+    "budget": 2
+  },
+  "300+0|1800|middlegame|10to30|none": {
+    "n": 17,
+    "p50": 3,
+    "p75": 6,
+    "budget": 6
+  },
+  "300+0|1800|middlegame|30to60|none": {
+    "n": 367,
+    "p50": 5,
+    "p75": 10,
+    "budget": 10
+  },
+  "300+0|1800|middlegame|gt60|none": {
+    "n": 1808,
+    "p50": 4,
+    "p75": 8,
+    "budget": 8
+  },
+  "300+0|1800|opening|gt60|none": {
+    "n": 1152,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "300+0|2000|endgame|10to30|none": {
+    "n": 217,
+    "p50": 2,
+    "p75": 4,
+    "budget": 4
+  },
+  "300+0|2000|endgame|30to60|none": {
+    "n": 214,
+    "p50": 3,
+    "p75": 6.75,
+    "budget": 6.75
+  },
+  "300+0|2000|endgame|gt60|none": {
+    "n": 23,
+    "p50": 5,
+    "p75": 8,
+    "budget": 8
+  },
+  "300+0|2000|endgame|lt10|none": {
+    "n": 63,
+    "p50": 2,
+    "p75": 2,
+    "budget": 2
+  },
+  "300+0|2000|middlegame|10to30|none": {
+    "n": 20,
+    "p50": 5.5,
+    "p75": 9.25,
+    "budget": 9.25
+  },
+  "300+0|2000|middlegame|30to60|none": {
+    "n": 255,
+    "p50": 6,
+    "p75": 12,
+    "budget": 12
+  },
+  "300+0|2000|middlegame|gt60|none": {
+    "n": 775,
+    "p50": 5,
+    "p75": 9,
+    "budget": 9
+  },
+  "300+0|2000|opening|gt60|none": {
+    "n": 501,
+    "p50": 2,
+    "p75": 3,
+    "budget": 3
+  },
+  "300+0|2200|endgame|10to30|none": {
+    "n": 19,
+    "p50": 1,
+    "p75": 2,
+    "budget": 2
+  },
+  "300+0|2200|endgame|30to60|none": {
+    "n": 14,
+    "p50": 3,
+    "p75": 6.25,
+    "budget": 6.25
+  },
+  "300+0|2200|middlegame|30to60|none": {
+    "n": 5,
+    "p50": 5,
+    "p75": 9,
+    "budget": 9
+  },
+  "300+0|2200|middlegame|gt60|none": {
+    "n": 15,
+    "p50": 5,
+    "p75": 6.5,
+    "budget": 6.5
+  },
+  "300+0|2200|opening|gt60|none": {
+    "n": 9,
+    "p50": 3,
+    "p75": 4,
+    "budget": 4
+  }
+}
