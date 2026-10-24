@@ -2,7 +2,7 @@
 
 Do not decompress a monthly dump. Recent files are about **29 GB compressed** (September 2026: `lichess_db_standard_rated_2026-09.pgn.zst`, 29,224,520,887 bytes). Uncompressed they will not fit comfortably on a laptop.
 
-Ingest runs on **Vultr**. This repo’s parser writes CSV. Tiger Data is loaded with `\copy` after a small sample looks sane.
+Ingest runs on **Vultr**. The **C++** parser in `ingest/cpp` writes CSV. Tiger Data is loaded with `\copy` after a small sample looks sane. Python `ingest/ingest.py` is the unit-test spec, not the dump path.
 
 ## What one kept game becomes
 
@@ -28,7 +28,9 @@ From `Peter/` (PowerShell):
 
 ```powershell
 python -m unittest ingest.tests.test_ingest
-Get-Content -Raw ingest\tests\fixtures\sample.pgn | python ingest\ingest.py --out-dir data
+cd ingest\cpp; powershell -File compile.ps1; cd ..\..
+New-Item -ItemType Directory -Force data | Out-Null
+Get-Content ingest\tests\fixtures\sample.pgn | ingest\cpp\build\ingest.exe --out-dir data
 python ingest\validate.py --dir data
 ```
 
@@ -40,13 +42,15 @@ Expect two kept games (`KeepGame1`, `KeepGame2`), four moves on the first, two o
 curl -sI "https://database.lichess.org/standard/lichess_db_standard_rated_2026-09.pgn.zst" | grep -i content-length
 ```
 
-Install `zstd` if needed. Stream a **probe** of 200 kept games (stopping curl early is fine; `zstd` will complain about truncation):
+Install `zstd` if needed. Build ingest first (`ingest/cpp`). Stream a **probe** of 200 kept games (stopping curl early is fine; `zstd` will complain about truncation):
 
 ```bash
-mkdir -p data
+mkdir -p data ingest/cpp/build
+# Windows: powershell -File ingest/cpp/compile.ps1
+# else:    make -C ingest/cpp
 curl -L "https://database.lichess.org/standard/lichess_db_standard_rated_2026-09.pgn.zst" \
   | zstd -dc \
-  | python ingest/ingest.py --out-dir data --max-games 200
+  | ingest/cpp/build/ingest --out-dir data --max-games 200
 python ingest/validate.py --dir data
 ```
 
@@ -83,7 +87,7 @@ Truncate the probe, rerun ingest **without** `--max-games`, `\copy` again, **the
 psql "$DATABASE_URL" -c "TRUNCATE moves, games;"
 curl -L "https://database.lichess.org/standard/lichess_db_standard_rated_2026-09.pgn.zst" \
   | zstd -dc \
-  | python ingest/ingest.py --out-dir data
+  | ingest/cpp/build/ingest --out-dir data
 psql "$DATABASE_URL" -f sql/002_copy.sql
 psql "$DATABASE_URL" -f sql/003_indexes.sql
 ```

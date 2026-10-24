@@ -91,7 +91,7 @@ For each context bucket, the budget is the think time beyond which extra time st
 
 ### Phase 1: Ingest
 1. Download one monthly file from database.lichess.org (check its size first; recent months are tens of GB).
-2. Stream it: `zstd -dc file.pgn.zst | python ingest.py`. Do not decompress to disk.
+2. Stream it: `zstd -dc file.pgn.zst | ingest/cpp/build/ingest`. Do not decompress to disk.
 3. Parse with a plain-text reader (no board replay). Keep a game only if:
    - movetext contains `[%eval` and `[%clk`
    - `Event` is `Rated Blitz game` (excludes arena tournaments, where berserk halves the clock)

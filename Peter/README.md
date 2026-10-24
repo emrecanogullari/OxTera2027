@@ -12,7 +12,8 @@ The working spec is [docs/project-plan.md](docs/project-plan.md). Stockfish work
 
 | Path | Role |
 |---|---|
-| `ingest/` | Stream and filter Lichess PGN dumps |
+| `ingest/cpp/` | C++ PGN filter (writes `games.csv` / `moves.csv`) |
+| `ingest/` | Python tests, zstd download helper, Tiger load |
 | `sql/` | Tiger Data schema, metrics, lookup-table queries |
 | `annotate/` | Replay, FEN, labels, Stockfish seed |
 | `model/` | Analysis, knee detection, optional LightGBM |

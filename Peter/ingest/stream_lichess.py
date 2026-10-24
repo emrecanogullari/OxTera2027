@@ -1,21 +1,50 @@
 #!/usr/bin/env python3
-"""Download a Lichess monthly dump as a zstd stream and keep N matching games."""
+"""Download a Lichess monthly dump and pipe PGN into the C++ ingest binary."""
 
 from __future__ import annotations
 
 import argparse
-import io
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
 
 import zstandard as zstd
 
-from ingest.ingest import ingest, write_csv
-
 DEFAULT_URL = (
     "https://database.lichess.org/standard/lichess_db_standard_rated_2026-09.pgn.zst"
 )
+
+
+def ingest_binary() -> Path:
+    build = Path(__file__).resolve().parent / "cpp" / "build"
+    for name in ("ingest.exe", "ingest"):
+        path = build / name
+        if path.is_file():
+            return path
+    raise SystemExit(
+        "C++ ingest not built. From Peter/ingest/cpp run: powershell -File compile.ps1"
+    )
+
+
+def run_ingest(pgn_bytes_src, out_dir: Path, max_games: int) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cmd = [str(ingest_binary()), "--out-dir", str(out_dir)]
+    if max_games:
+        cmd.extend(["--max-games", str(max_games)])
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+    assert proc.stdin is not None
+    try:
+        while True:
+            chunk = pgn_bytes_src.read(1024 * 1024)
+            if not chunk:
+                break
+            proc.stdin.write(chunk)
+    finally:
+        proc.stdin.close()
+    code = proc.wait()
+    if code != 0:
+        raise SystemExit(code)
 
 
 def stream_url(url: str, out_dir: Path, max_games: int) -> None:
@@ -23,14 +52,7 @@ def stream_url(url: str, out_dir: Path, max_games: int) -> None:
     print(f"streaming {url}", file=sys.stderr, flush=True)
     with urllib.request.urlopen(request, timeout=60) as response:
         reader = zstd.ZstdDecompressor().stream_reader(response)
-        text = io.TextIOWrapper(reader, encoding="utf-8", errors="replace")
-        games, moves, stats = ingest(text, max_games=max_games)
-    write_csv(out_dir, games, moves)
-    print(
-        f"seen={stats['seen']} kept={stats['kept']} moves={len(moves)} "
-        f"filtered={stats['filtered']} dupes={stats['dupes']} no_moves={stats['no_moves']}",
-        file=sys.stderr,
-    )
+        run_ingest(reader, out_dir, max_games)
 
 
 def main() -> int:

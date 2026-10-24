@@ -1,0 +1,222 @@
+{
+  "_meta": {
+    "protocol": "POST /predict",
+    "content_type": "application/json",
+    "base_url_dev": "http://127.0.0.1:8000",
+    "health": "GET /health → { \"ok\": true }",
+    "source_features": "Aniket/FEATURE_SET.md",
+    "notes": [
+      "Request sends named features for the chosen speed. Server maps them into the per-target model vectors.",
+      "Response is always the same shape regardless of speed.",
+      "p_blunder is a probability in [0, 1].",
+      "time_spent_* values are seconds (same units as FEATURE_SET target T).",
+      "Swap this fixture for the live FastAPI response without changing field names."
+    ]
+  },
+
+  "request_schema": {
+    "speed": "bullet | blitz | classical",
+    "features": "object whose keys are exactly the feature array for that speed in FEATURE_SET.md",
+    "optional": {
+      "game_id": "string, for logging / UI correlation",
+      "ply": "also present inside features; may be duplicated at top level if useful"
+    }
+  },
+
+  "response_schema": {
+    "speed": "echo of request speed",
+    "predictions": {
+      "time_spent_s": "point estimate of think time (seconds)",
+      "time_spent_p50_s": "optional median / typical think time",
+      "time_spent_p75_s": "optional upper typical think time (nudge budget)",
+      "p_blunder": "P(this move loses ≥ 20 win% points)"
+    },
+    "model": {
+      "version": "string",
+      "targets": ["time_spent", "blunder"]
+    }
+  },
+
+  "examples": {
+    "blitz_middlegame": {
+      "request": {
+        "speed": "blitz",
+        "game_id": "dummy-blitz-001",
+        "features": {
+          "clock_self": 142.0,
+          "clock_opp": 155.0,
+          "clock_ratio": 0.916,
+          "inc": 0,
+          "prev_self_spent": 3.0,
+          "avg_self_spent": 4.5,
+          "prev_opp_spent": 2.0,
+          "elo_self": 1510,
+          "ply": 28,
+          "mat_total": 62,
+          "mat_diff": 0,
+          "n_legal": 34,
+          "n_captures": 5,
+          "wp_self": 48.2,
+          "abs_cp": 12,
+          "last_swing": 8.5,
+          "prior_blunders_self": 1
+        }
+      },
+      "response": {
+        "speed": "blitz",
+        "game_id": "dummy-blitz-001",
+        "predictions": {
+          "time_spent_s": 5.4,
+          "time_spent_p50_s": 4.0,
+          "time_spent_p75_s": 7.0,
+          "p_blunder": 0.12
+        },
+        "model": {
+          "version": "dummy-v0",
+          "targets": ["time_spent", "blunder"]
+        }
+      }
+    },
+
+    "bullet_tactical": {
+      "request": {
+        "speed": "bullet",
+        "game_id": "dummy-bullet-001",
+        "features": {
+          "clock_self": 38.0,
+          "clock_opp": 41.0,
+          "clock_ratio": 0.927,
+          "base": 60,
+          "inc": 0,
+          "prev_self_spent": 1.0,
+          "avg_self_spent": 1.8,
+          "prev_opp_spent": 2.0,
+          "elo_self": 1680,
+          "ply": 41,
+          "mat_total": 45,
+          "mat_diff": -3,
+          "n_legal": 28,
+          "n_captures": 9,
+          "wp_self": 35.0,
+          "abs_cp": 180,
+          "last_swing": 22.0,
+          "prior_blunders_self": 2
+        }
+      },
+      "response": {
+        "speed": "bullet",
+        "game_id": "dummy-bullet-001",
+        "predictions": {
+          "time_spent_s": 2.1,
+          "time_spent_p50_s": 1.5,
+          "time_spent_p75_s": 3.0,
+          "p_blunder": 0.31
+        },
+        "model": {
+          "version": "dummy-v0",
+          "targets": ["time_spent", "blunder"]
+        }
+      }
+    },
+
+    "classical_calm": {
+      "request": {
+        "speed": "classical",
+        "game_id": "dummy-classical-001",
+        "features": {
+          "clock_self": 1520.0,
+          "clock_ratio": 1.05,
+          "frac_self": 0.84,
+          "prev_self_spent": 18.0,
+          "avg_self_spent": 22.0,
+          "prev_opp_spent": 25.0,
+          "elo_self": 1900,
+          "ply": 16,
+          "mat_total": 74,
+          "mat_diff": 0,
+          "n_legal": 31,
+          "n_captures": 2,
+          "wp_self": 51.0,
+          "abs_cp": 8,
+          "last_swing": 1.2,
+          "prior_blunders_self": 0
+        }
+      },
+      "response": {
+        "speed": "classical",
+        "game_id": "dummy-classical-001",
+        "predictions": {
+          "time_spent_s": 28.0,
+          "time_spent_p50_s": 22.0,
+          "time_spent_p75_s": 40.0,
+          "p_blunder": 0.04
+        },
+        "model": {
+          "version": "dummy-v0",
+          "targets": ["time_spent", "blunder"]
+        }
+      }
+    },
+
+    "blitz_time_scramble_high_blunder": {
+      "request": {
+        "speed": "blitz",
+        "game_id": "dummy-blitz-scramble",
+        "features": {
+          "clock_self": 8.0,
+          "clock_opp": 22.0,
+          "clock_ratio": 0.364,
+          "inc": 0,
+          "prev_self_spent": 1.0,
+          "avg_self_spent": 3.2,
+          "prev_opp_spent": 4.0,
+          "elo_self": 1400,
+          "ply": 62,
+          "mat_total": 28,
+          "mat_diff": -2,
+          "n_legal": 22,
+          "n_captures": 6,
+          "wp_self": 28.0,
+          "abs_cp": 320,
+          "last_swing": 15.0,
+          "prior_blunders_self": 3
+        }
+      },
+      "response": {
+        "speed": "blitz",
+        "game_id": "dummy-blitz-scramble",
+        "predictions": {
+          "time_spent_s": 1.2,
+          "time_spent_p50_s": 1.0,
+          "time_spent_p75_s": 2.0,
+          "p_blunder": 0.42
+        },
+        "model": {
+          "version": "dummy-v0",
+          "targets": ["time_spent", "blunder"]
+        }
+      }
+    }
+  },
+
+  "feature_keys_by_speed": {
+    "bullet": [
+      "clock_self", "clock_opp", "clock_ratio", "base", "inc",
+      "prev_self_spent", "avg_self_spent", "prev_opp_spent",
+      "elo_self", "ply", "mat_total", "mat_diff", "n_legal", "n_captures",
+      "wp_self", "abs_cp", "last_swing", "prior_blunders_self"
+    ],
+    "blitz": [
+      "clock_self", "clock_opp", "clock_ratio", "inc",
+      "prev_self_spent", "avg_self_spent", "prev_opp_spent",
+      "elo_self", "ply", "mat_total", "mat_diff", "n_legal", "n_captures",
+      "wp_self", "abs_cp", "last_swing", "prior_blunders_self"
+    ],
+    "classical": [
+      "clock_self", "clock_ratio", "frac_self",
+      "prev_self_spent", "avg_self_spent", "prev_opp_spent",
+      "elo_self", "ply", "mat_total", "mat_diff", "n_legal", "n_captures",
+      "wp_self", "abs_cp", "last_swing", "prior_blunders_self"
+    ]
+  }
+}

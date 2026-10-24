@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Stream Lichess PGN from stdin and write games.csv / moves.csv.
+"""Reference Python parser for unit tests.
 
-Plain-text parser: no board replay. Filters match docs/project-plan.md Phase 1.
+Live ingest is the C++ binary in ingest/cpp (see ingest/cpp/README.md):
 
-    zstd -dc dump.pgn.zst | python ingest/ingest.py --out-dir data --max-games 200
+    zstd -dc dump.pgn.zst | ingest/cpp/build/ingest.exe --out-dir data --max-games 200
 """
 
 from __future__ import annotations
@@ -219,9 +219,8 @@ def parse_moves(game_id: str, movetext: str) -> list[MoveRow]:
     return rows
 
 
-def keep_game(tags: dict[str, str], movetext: str) -> GameRow | None:
-    if "[%eval" not in movetext or "[%clk" not in movetext:
-        return None
+def keep_headers(tags: dict[str, str]) -> GameRow | None:
+    """Cheap filters from PGN tags only — skip movetext parse for most games."""
     if tags.get("Event") not in KEEP_EVENTS:
         return None
     if tags.get("Termination") not in KEEP_TERMINATIONS:
@@ -254,6 +253,15 @@ def keep_game(tags: dict[str, str], movetext: str) -> GameRow | None:
         termination=tags["Termination"],
         utc_date=utc_date,
     )
+
+
+def keep_game(tags: dict[str, str], movetext: str) -> GameRow | None:
+    game = keep_headers(tags)
+    if game is None:
+        return None
+    if "[%eval" not in movetext or "[%clk" not in movetext:
+        return None
+    return game
 
 
 def iter_games(stream: TextIO) -> Iterator[tuple[str, str]]:
@@ -291,14 +299,15 @@ def iter_games(stream: TextIO) -> Iterator[tuple[str, str]]:
         yield game
 
 
-def ingest(
+def iter_kept(
     stream: TextIO,
     *,
     max_games: int | None = None,
     max_seen: int | None = None,
-) -> tuple[list[GameRow], list[MoveRow], dict[str, int]]:
-    games: list[GameRow] = []
-    moves: list[MoveRow] = []
+    skip_ids: set[str] | None = None,
+) -> Iterator[tuple[GameRow, list[MoveRow], dict[str, int]]]:
+    """Yield kept games one at a time. Header filters run before movetext parse."""
+    skip_ids = skip_ids or set()
     seen_ids: set[str] = set()
     stats = {
         "seen": 0,
@@ -306,11 +315,13 @@ def ingest(
         "dupes": 0,
         "no_moves": 0,
         "filtered": 0,
+        "skipped_existing": 0,
+        "moves": 0,
     }
 
     for header_text, movetext in iter_games(stream):
         stats["seen"] += 1
-        if stats["seen"] % 500 == 0:
+        if stats["seen"] % 2000 == 0:
             print(
                 f"progress seen={stats['seen']} kept={stats['kept']} filtered={stats['filtered']}",
                 file=sys.stderr,
@@ -319,23 +330,54 @@ def ingest(
         if max_seen is not None and stats["seen"] > max_seen:
             break
         tags = tag_dict(header_text)
-        game = keep_game(tags, movetext)
+        game = keep_headers(tags)
         if game is None:
             stats["filtered"] += 1
             continue
+        if game.game_id in skip_ids:
+            stats["skipped_existing"] += 1
+            continue
         if game.game_id in seen_ids:
             stats["dupes"] += 1
+            continue
+        if "[%eval" not in movetext or "[%clk" not in movetext:
+            stats["filtered"] += 1
             continue
         move_rows = parse_moves(game.game_id, movetext)
         if not move_rows:
             stats["no_moves"] += 1
             continue
         seen_ids.add(game.game_id)
-        games.append(game)
-        moves.extend(move_rows)
         stats["kept"] += 1
+        stats["moves"] += len(move_rows)
+        yield game, move_rows, stats
         if max_games is not None and stats["kept"] >= max_games:
             break
+
+
+def ingest(
+    stream: TextIO,
+    *,
+    max_games: int | None = None,
+    max_seen: int | None = None,
+    skip_ids: set[str] | None = None,
+) -> tuple[list[GameRow], list[MoveRow], dict[str, int]]:
+    games: list[GameRow] = []
+    moves: list[MoveRow] = []
+    stats = {
+        "seen": 0,
+        "kept": 0,
+        "dupes": 0,
+        "no_moves": 0,
+        "filtered": 0,
+        "skipped_existing": 0,
+        "moves": 0,
+    }
+    for game, move_rows, stats in iter_kept(
+        stream, max_games=max_games, max_seen=max_seen, skip_ids=skip_ids
+    ):
+        games.append(game)
+        moves.extend(move_rows)
     return games, moves, stats
 
 
