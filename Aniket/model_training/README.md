@@ -48,7 +48,7 @@ modelling.py       the models, grouped cross-validation, scoring, predict_moves(
 1_train.py  2_fetch_test.py  3_evaluate.py  4_export_cpp.py
 predict.py         PGN in, the 3 predictions per move out
 requirements.txt   the exact versions the models were trained with
-cpp/               C++ predictor: oracle_model.hpp, oracle_predict.cpp, Makefile, models/<speed>.txt
+cpp/               C++ predictor: oracle_model.hpp, oracle_predict.cpp, Makefile / CMakeLists.txt, models/<speed>.txt
 models/<speed>/<target>.joblib        trained models (+ their cross-validation results)
 test_data/<speed>/                    games.pgn, moves.parquet (labelled), predictions.parquet
 reports/                              RESULTS.md, cv.md, <speed>/*.png

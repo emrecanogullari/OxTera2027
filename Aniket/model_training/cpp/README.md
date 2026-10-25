@@ -31,6 +31,25 @@ Results on this machine:
 - **47–56 µs per move for all 3 models** (about 2,000 trees), single-threaded. Python takes ~40 ms per move one at a
   time (about 800× slower).
 
+## Build on any OS
+
+A compiled program only runs on the OS it was built for (the Mac one won't run on Windows or Linux), so build it
+once per OS. The code and the model files are the same everywhere.
+
+| OS | build | run |
+|---|---|---|
+| macOS / Linux | `make` | `./oracle_predict models/blitz.txt moves.csv` |
+| any OS, with CMake | `cmake -S . -B build` then `cmake --build build --config Release` | `build/oracle_predict …` (Visual Studio: `build\Release\oracle_predict.exe …`) |
+| Windows, Visual Studio | open the `cpp` folder in Visual Studio (it reads `CMakeLists.txt`), or in an "x64 Native Tools" prompt: `cl /O2 /std:c++17 /EHsc oracle_predict.cpp` | `oracle_predict.exe models\blitz.txt moves.csv` |
+| Windows, MinGW | `g++ -O3 -std=c++17 -static -o oracle_predict.exe oracle_predict.cpp` | same |
+
+- **Compilers:** any C++17 compiler (g++ 7+, clang 5+, Visual Studio 2017+).
+- **No extra installs on Windows:** the `.exe` is built so it needs no runtime DLLs.
+- **CSVs from Excel or Windows** (`\r\n` line endings, byte-order mark) work everywhere.
+- **In your own program,** `#include "oracle_model.hpp"` is the same on every OS.
+- **Tested so far on macOS only** (`make` and CMake). Windows and Linux use the same standard C++17 code but haven't
+  been built yet.
+
 ## Command line
 
 ```bash
