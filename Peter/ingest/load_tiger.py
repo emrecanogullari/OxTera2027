@@ -6,13 +6,26 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 
 import psycopg
 
 TIGER = Path.home() / "AppData/Local/Programs/TigerCLI/tiger.exe"
 SERVICE = "gethdbqtlo"
-LOOKUP_VERSION = "probe-1000-2026-09"
+LOOKUP_VERSION = "full-2026-08-09"
+
+# Child tables first so TRUNCATE ... CASCADE is unnecessary if FKs block.
+TRUNCATE_TABLES = (
+    "lookup_budgets",
+    "best_next_move",
+    "move_outcomes",
+    "engine_features",
+    "move_replay",
+    "move_metrics",
+    "moves",
+    "games",
+)
 
 
 def tiger_exe() -> str:
@@ -42,7 +55,16 @@ def copy_csv(conn: psycopg.Connection, table: str, csv_path: Path) -> None:
     conn.commit()
 
 
-def export_lookup(conn: psycopg.Connection, dest: Path) -> int:
+def render_lookup_sql(sql_dir: Path, version: str) -> Path:
+    template = (sql_dir / "005_lookup.sql").read_text(encoding="utf-8")
+    # Replace the probe version string used in the checked-in SQL.
+    rendered = template.replace("probe-1000-2026-09", version)
+    tmp = Path(tempfile.mkstemp(prefix="lookup_", suffix=".sql")[1])
+    tmp.write_text(rendered, encoding="utf-8")
+    return tmp
+
+
+def export_lookup(conn: psycopg.Connection, dest: Path, version: str) -> int:
     dest.parent.mkdir(parents=True, exist_ok=True)
     row = conn.execute(
         """
@@ -62,7 +84,7 @@ def export_lookup(conn: psycopg.Connection, dest: Path) -> int:
         FROM lookup_budgets
         WHERE version = %s
         """,
-        (LOOKUP_VERSION,),
+        (version,),
     ).fetchone()
     payload = row[0]
     if isinstance(payload, str):
@@ -70,9 +92,19 @@ def export_lookup(conn: psycopg.Connection, dest: Path) -> int:
     dest.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     count = conn.execute(
         "SELECT COUNT(*) FROM lookup_budgets WHERE version = %s",
-        (LOOKUP_VERSION,),
+        (version,),
     ).fetchone()[0]
     return int(count)
+
+
+def existing_relations(conn: psycopg.Connection) -> set[str]:
+    rows = conn.execute(
+        """
+        SELECT relname FROM pg_class
+        WHERE relkind = 'r' AND relnamespace = 'public'::regnamespace
+        """
+    ).fetchall()
+    return {r[0] for r in rows}
 
 
 def main() -> int:
@@ -80,6 +112,7 @@ def main() -> int:
     parser.add_argument("--service", default=SERVICE)
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
     parser.add_argument("--sql-dir", type=Path, default=Path("sql"))
+    parser.add_argument("--lookup-version", default=LOOKUP_VERSION)
     parser.add_argument(
         "--lookup-json",
         type=Path,
@@ -89,10 +122,11 @@ def main() -> int:
     tiger_sql_file(args.service, args.sql_dir / "001_schema.sql")
     uri = tiger_uri(args.service)
     with psycopg.connect(uri) as conn:
-        conn.execute(
-            "TRUNCATE lookup_budgets, engine_features, move_metrics, moves, games"
-        )
-        conn.commit()
+        present = existing_relations(conn)
+        to_wipe = [t for t in TRUNCATE_TABLES if t in present]
+        if to_wipe:
+            conn.execute("TRUNCATE " + ", ".join(to_wipe))
+            conn.commit()
         copy_csv(
             conn,
             "games (game_id, white_elo, black_elo, base, inc, result, termination, utc_date)",
@@ -105,12 +139,16 @@ def main() -> int:
         )
     tiger_sql_file(args.service, args.sql_dir / "004_metrics.sql")
     tiger_sql_file(args.service, args.sql_dir / "003_indexes.sql")
-    tiger_sql_file(args.service, args.sql_dir / "005_lookup.sql")
+    lookup_sql = render_lookup_sql(args.sql_dir, args.lookup_version)
+    try:
+        tiger_sql_file(args.service, lookup_sql)
+    finally:
+        lookup_sql.unlink(missing_ok=True)
     with psycopg.connect(uri) as conn:
         n_games = conn.execute("SELECT COUNT(*) FROM games").fetchone()[0]
         n_moves = conn.execute("SELECT COUNT(*) FROM moves").fetchone()[0]
         n_metrics = conn.execute("SELECT COUNT(*) FROM move_metrics").fetchone()[0]
-        n_lookup = export_lookup(conn, args.lookup_json)
+        n_lookup = export_lookup(conn, args.lookup_json, args.lookup_version)
         print(
             f"games={n_games} moves={n_moves} metrics={n_metrics} "
             f"lookup_cells={n_lookup} wrote {args.lookup_json}"
