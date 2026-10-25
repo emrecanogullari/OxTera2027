@@ -3,6 +3,9 @@
   const Ox = (root.OxTeraCoach = root.OxTeraCoach || {});
 
   /**
+   * Build the scrape payload for POST /predict/live.
+   * Do not set client_id here — the background service worker injects it.
+   *
    * @param {object} fields
    * @returns {object}
    */

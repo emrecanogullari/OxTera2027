@@ -3,7 +3,8 @@
   const Ox = (root.OxTeraCoach = root.OxTeraCoach || {});
 
   Ox.DEBUG = true;
-  Ox.API_CLIENT_VERSION = "1.3.2";
+  Ox.API_CLIENT_VERSION = "1.4.0";
+  // client_id is injected by the background service worker (not here).
 
   function sendPredictLive(payload) {
     return new Promise((resolve, reject) => {
@@ -50,7 +51,7 @@
     const data = response.data;
 
     console.groupCollapsed(
-      `[OxTera ${Ox.API_CLIENT_VERSION}] ok proxy=${response.proxyVersion} p_blunder=${data.predictions?.p_blunder} engine=${data.debug?.engine_used}`
+      `[OxTera ${Ox.API_CLIENT_VERSION}] ok proxy=${response.proxyVersion} client=${response.clientId || "?"} p_blunder=${data.predictions?.p_blunder} engine=${data.debug?.engine_used}`
     );
     console.log("predictions", data.predictions);
     console.log("model", data.model);
