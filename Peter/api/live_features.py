@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import os
 import shutil
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -146,22 +147,38 @@ _SESSIONS: dict[str, GameSession] = {}
 _PAGE: dict[str, "PageLedger"] = {}
 _ENGINE: chess.engine.SimpleEngine | None = None
 _ENGINE_PATH: str | None = None
-_ENGINE_FAILED = False
+_ENGINE_MISSING = False  # True only when binary cannot be found / never starts
+_ENGINE_LOCK = threading.Lock()
 
 
 def _require_engine_strict() -> bool:
     return os.environ.get("OXTERA_REQUIRE_ENGINE", "").strip().lower() in {"1", "true", "yes"}
 
 
+def _drop_engine() -> None:
+    """Forget a dead engine so the next call can spawn a fresh Stockfish."""
+    global _ENGINE, _ENGINE_PATH
+    eng = _ENGINE
+    _ENGINE = None
+    if eng is not None:
+        try:
+            eng.quit()
+        except Exception:  # noqa: BLE001
+            try:
+                eng.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def _get_engine() -> chess.engine.SimpleEngine | None:
-    global _ENGINE, _ENGINE_PATH, _ENGINE_FAILED
+    global _ENGINE, _ENGINE_PATH, _ENGINE_MISSING
     if _ENGINE is not None:
         return _ENGINE
-    if _ENGINE_FAILED:
+    if _ENGINE_MISSING:
         return None
     path = find_stockfish()
     if not path:
-        _ENGINE_FAILED = True
+        _ENGINE_MISSING = True
         if _require_engine_strict():
             raise EngineUnavailableError(
                 "Stockfish not found. Set STOCKFISH_PATH or install stockfish on PATH."
@@ -172,7 +189,7 @@ def _get_engine() -> chess.engine.SimpleEngine | None:
         _ENGINE_PATH = path
         return _ENGINE
     except Exception as exc:  # noqa: BLE001
-        _ENGINE_FAILED = True
+        _ENGINE = None
         if _require_engine_strict():
             raise EngineUnavailableError(f"failed to start Stockfish at {path}: {exc}") from exc
         return None
@@ -183,19 +200,31 @@ def evaluate_board(
     depth: int | None = None,
     movetime: float | None = None,
 ) -> EvalSnapshot:
-    engine = _get_engine()
-    if engine is None:
-        return EvalSnapshot()
     if depth is not None:
         limit = chess.engine.Limit(depth=depth)
     else:
         limit = chess.engine.Limit(time=0.02 if movetime is None else movetime)
-    info = engine.analyse(board, limit)
-    score = info["score"].white()
-    if score.is_mate():
-        mate = score.mate()
-        return EvalSnapshot(cp=None, mate=mate)
-    return EvalSnapshot(cp=float(score.score(mate_score=CP_CAP)), mate=None)
+
+    with _ENGINE_LOCK:
+        for attempt in range(2):
+            engine = _get_engine()
+            if engine is None:
+                return EvalSnapshot()
+            try:
+                info = engine.analyse(board, limit)
+                score = info["score"].white()
+                if score.is_mate():
+                    return EvalSnapshot(cp=None, mate=score.mate())
+                return EvalSnapshot(cp=float(score.score(mate_score=CP_CAP)), mate=None)
+            except (chess.engine.EngineTerminatedError, chess.engine.EngineError, OSError) as exc:
+                # Process died mid-game under load — drop and respawn once.
+                _drop_engine()
+                if attempt == 0:
+                    continue
+                if _require_engine_strict():
+                    raise EngineUnavailableError(f"Stockfish died: {exc}") from exc
+                return EvalSnapshot()
+    return EvalSnapshot()
 
 
 def _board_from_fen(fen: str) -> chess.Board:
@@ -554,7 +583,7 @@ def _build_from_placement(
                 ledger.drop[finished] = swing
                 last_swing = swing
     elif ply == 1 and movetime != 0:
-        engine_used = find_stockfish() is not None and not _ENGINE_FAILED
+        engine_used = find_stockfish() is not None and not _ENGINE_MISSING
 
     pos = position_features(ledger.board)
     features: dict[str, float] = {
@@ -651,9 +680,8 @@ def build_features(
         prior_blunders = float(sess.prior_blunders_self)
 
     # Engine features: eval of the position we are facing (= after opponent's last move).
-    engine_used = find_stockfish() is not None and not _ENGINE_FAILED
-    snap = evaluate_board(board, depth=engine_depth)
-    engine_used = _ENGINE is not None
+        snap = evaluate_board(board, depth=engine_depth)
+        engine_used = snap.cp is not None or snap.mate is not None or _ENGINE is not None
 
     if snap.cp is None and snap.mate is None:
         wp_self = math.nan
@@ -735,12 +763,7 @@ def warm_engine() -> None:
 
 
 def shutdown_engine() -> None:
-    global _ENGINE, _ENGINE_PATH, _ENGINE_FAILED
-    if _ENGINE is not None:
-        try:
-            _ENGINE.quit()
-        except Exception:  # noqa: BLE001
-            pass
-    _ENGINE = None
+    global _ENGINE, _ENGINE_PATH, _ENGINE_MISSING
+    _drop_engine()
     _ENGINE_PATH = None
-    _ENGINE_FAILED = False
+    # Do not set _ENGINE_MISSING — allow a later warm/predict to find Stockfish again.
