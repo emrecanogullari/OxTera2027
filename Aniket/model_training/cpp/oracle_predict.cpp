@@ -19,6 +19,13 @@
 
 namespace {
 
+// getline that also accepts Windows line endings (\r\n), so CSVs saved on any OS or by Excel work everywhere.
+bool next_line(std::istream& in, std::string& line) {
+  if (!std::getline(in, line)) return false;
+  if (!line.empty() && line.back() == '\r') line.pop_back();
+  return true;
+}
+
 std::vector<std::string> split(const std::string& line) {
   std::vector<std::string> cells;
   std::string cell;
@@ -62,7 +69,8 @@ int run(int argc, char** argv) {
   }
   std::istream& in = csv.empty() ? std::cin : file;
   std::string line;
-  if (!std::getline(in, line)) throw std::runtime_error("empty input");
+  if (!next_line(in, line)) throw std::runtime_error("empty input");
+  if (line.rfind("\xEF\xBB\xBF", 0) == 0) line.erase(0, 3);  // UTF-8 byte-order mark (Excel)
   const std::vector<std::string> header = split(line);
   std::map<std::string, std::size_t> col;
   for (std::size_t i = 0; i < header.size(); ++i) col[header[i]] = i;
@@ -80,7 +88,7 @@ int run(int argc, char** argv) {
   const std::size_t n_feat = feat_col.size();
   std::vector<double> X;                    // rows x features, model order
   std::vector<std::array<double, 7>> want;  // expected outputs (--check)
-  while (std::getline(in, line)) {
+  while (next_line(in, line)) {
     if (line.empty()) continue;
     const std::vector<std::string> cells = split(line);
     for (std::size_t c : feat_col) X.push_back(parse(c < cells.size() ? cells[c] : ""));
