@@ -5,6 +5,9 @@ OxHack_Obsidian_Vault/.obsidian/*
 Emre/build/
 Peter/ingest/cpp/build/
 
+# Local Stockfish binary for the best_next_move batch
+Peter/.tools/
+
 .venv/
 venv/
 __pycache__/
