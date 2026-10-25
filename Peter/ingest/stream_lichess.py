@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Download Lichess monthly dump(s) and pipe PGN into the C++ ingest binary."""
+"""Download Lichess monthly dump(s) and pipe PGN into the C++ ingest binary.
+
+Downloads the .zst to disk with curl resume, then decompresses locally.
+HTTP streaming mid-decompress cannot resume after a connection drop.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,6 @@ import argparse
 import shutil
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
 
 import zstandard as zstd
@@ -49,11 +52,31 @@ def run_ingest(pgn_bytes_src, out_dir: Path, max_games: int) -> None:
         raise SystemExit(code)
 
 
-def stream_url(url: str, out_dir: Path, max_games: int) -> None:
-    request = urllib.request.Request(url, headers={"User-Agent": "OxTera2027-ingest"})
-    print(f"streaming {url}", file=sys.stderr, flush=True)
-    with urllib.request.urlopen(request, timeout=120) as response:
-        reader = zstd.ZstdDecompressor().stream_reader(response)
+def download_zst(url: str, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # curl -C - resumes; -L follows redirects; --retry for transient drops.
+    cmd = [
+        "curl.exe",
+        "-L",
+        "--fail",
+        "--retry",
+        "5",
+        "--retry-delay",
+        "5",
+        "-C",
+        "-",
+        "-o",
+        str(dest),
+        url,
+    ]
+    print(f"downloading {url} -> {dest}", file=sys.stderr, flush=True)
+    subprocess.check_call(cmd)
+
+
+def ingest_zst_file(zst_path: Path, out_dir: Path, max_games: int) -> None:
+    print(f"decompress+ingest {zst_path}", file=sys.stderr, flush=True)
+    with zst_path.open("rb") as handle:
+        reader = zstd.ZstdDecompressor().stream_reader(handle)
         run_ingest(reader, out_dir, max_games)
 
 
@@ -85,6 +108,35 @@ def merge_month_dirs(month_dirs: list[Path], out_dir: Path) -> None:
         print(f"merged {dest}", file=sys.stderr, flush=True)
 
 
+def process_month(
+    month: str,
+    out_dir: Path,
+    dumps_dir: Path,
+    max_games: int,
+    *,
+    keep_dump: bool,
+) -> Path:
+    url = URL_TMPL.format(month=month)
+    zst_path = dumps_dir / f"lichess_db_standard_rated_{month}.pgn.zst"
+    month_dir = out_dir / "months" / month
+    if (month_dir / "games.csv").is_file() and (month_dir / "moves.csv").is_file():
+        # Allow manual skip only when a .done marker exists (full successful run).
+        done = month_dir / ".done"
+        if done.is_file():
+            print(f"skip {month} (found {done})", file=sys.stderr, flush=True)
+            return month_dir
+
+    download_zst(url, zst_path)
+    if month_dir.exists():
+        shutil.rmtree(month_dir)
+    ingest_zst_file(zst_path, month_dir, max_games)
+    (month_dir / ".done").write_text("ok\n", encoding="utf-8")
+    if not keep_dump:
+        zst_path.unlink(missing_ok=True)
+        print(f"removed {zst_path}", file=sys.stderr, flush=True)
+    return month_dir
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -94,6 +146,12 @@ def main() -> int:
     )
     parser.add_argument("--url", default=None, help="Single dump URL (overrides --months)")
     parser.add_argument("--out-dir", type=Path, default=Path("data"))
+    parser.add_argument(
+        "--dumps-dir",
+        type=Path,
+        default=None,
+        help="Where to store .zst downloads (default: out-dir/dumps)",
+    )
     parser.add_argument(
         "--max-games",
         type=int,
@@ -105,22 +163,39 @@ def main() -> int:
         action="store_true",
         help="Keep per-month CSV folders under out-dir/months/",
     )
+    parser.add_argument(
+        "--keep-dumps",
+        action="store_true",
+        help="Keep downloaded .zst files after ingest",
+    )
     args = parser.parse_args()
+    dumps_dir = args.dumps_dir or (args.out_dir / "dumps")
 
     if args.url:
-        stream_url(args.url, args.out_dir, args.max_games)
+        # One-off URL: download name from URL basename.
+        name = args.url.rstrip("/").split("/")[-1]
+        zst_path = dumps_dir / name
+        download_zst(args.url, zst_path)
+        ingest_zst_file(zst_path, args.out_dir, args.max_games)
+        if not args.keep_dumps:
+            zst_path.unlink(missing_ok=True)
         return 0
 
     months = [m.strip() for m in args.months.split(",") if m.strip()]
     if not months:
         raise SystemExit("no months given")
 
-    month_root = args.out_dir / "months"
     month_dirs: list[Path] = []
     for month in months:
-        month_dir = month_root / month
-        stream_url(URL_TMPL.format(month=month), month_dir, args.max_games)
-        month_dirs.append(month_dir)
+        month_dirs.append(
+            process_month(
+                month,
+                args.out_dir,
+                dumps_dir,
+                args.max_games,
+                keep_dump=args.keep_dumps,
+            )
+        )
 
     if len(month_dirs) == 1:
         for name in ("games.csv", "moves.csv"):
@@ -131,8 +206,10 @@ def main() -> int:
     else:
         merge_month_dirs(month_dirs, args.out_dir)
 
-    if not args.keep_month_dirs and month_root.exists():
-        shutil.rmtree(month_root)
+    if not args.keep_month_dirs:
+        month_root = args.out_dir / "months"
+        if month_root.exists():
+            shutil.rmtree(month_root)
 
     return 0
 

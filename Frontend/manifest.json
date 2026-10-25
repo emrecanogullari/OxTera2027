@@ -1,24 +1,43 @@
 {
   "manifest_version": 3,
   "name": "Chess Coaching HUD",
-  "version": "1.0.0",
-  "description": "Real-time behavioral metrics and coaching HUD integrated with Lichess and a custom Python backend.",
-  "permissions": [
-    "activeTab",
-    "scripting"
-  ],
+  "version": "1.1.0",
+  "description": "Live think-time / blunder-risk HUD for chess.com and Lichess via the OxTera predict API.",
+  "permissions": ["activeTab", "scripting"],
   "content_scripts": [
     {
       "matches": [
-        "https://lichess.org/*"
+        "https://www.chess.com/game/*",
+        "https://www.chess.com/play/*",
+        "https://chess.com/game/*",
+        "https://chess.com/play/*"
       ],
       "js": [
+        "shared/raw_game_state.js",
+        "shared/clock_history.js",
+        "shared/api.js",
+        "shared/hud.js",
+        "sites/chesscom.js",
+        "content.js"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["https://lichess.org/*"],
+      "js": [
+        "shared/raw_game_state.js",
+        "shared/clock_history.js",
+        "shared/api.js",
+        "shared/hud.js",
+        "sites/lichess.js",
         "content.js"
       ],
       "run_at": "document_end"
     }
   ],
   "host_permissions": [
-    "http://127.0.0.1:8000/*"
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*",
+    "http://10.21.244.181:8000/*"
   ]
 }

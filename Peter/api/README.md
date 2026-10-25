@@ -2,11 +2,11 @@
 
 The extension / frontend talks to the model over **JSON** via `POST /predict`.
 
-**MVP server:** FastAPI on localhost returns **random** predictions in the correct shape so the frontend can integrate before real models exist. Field names match [`dummy_predict.json`](dummy_predict.json).
+FastAPI packs each request into the CSV expected by Aniket’s [`oracle_predict`](../../Aniket/model_training/cpp/README.md), runs the model for that speed, and returns the extension contract in [`dummy_predict.json`](dummy_predict.json).
 
 Feature names and units come from [`Aniket/FEATURE_SET.md`](../../Aniket/FEATURE_SET.md).
 
-## Run the MVP server
+## Run the server
 
 ```bash
 cd Peter/api
@@ -30,7 +30,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 
 If another device cannot connect, allow inbound TCP 8000 in Windows Firewall.
 
-Predictions are random (`model.version` is `random-mvp-v0`). Swap in a real model later without changing response field names.
+`model.version` is `oracle-cpp-v1`. The server prefers the C++ `oracle_predict` binary under `Aniket/model_training/cpp/`; if that binary cannot run on this OS, it loads the same `models/<speed>.txt` files in-process.
 
 ## Smoke-test client
 
@@ -48,7 +48,11 @@ This POSTs `examples.blitz_middlegame.request` from `dummy_predict.json` and pri
 | Method | Path | Body | Response |
 |---|---|---|---|
 | `GET` | `/health` | — | `{ "ok": true }` |
-| `POST` | `/predict` | request JSON below | response JSON below |
+| `GET` | `/predict/schema` | — | feature keys + live example |
+| `POST` | `/predict` | pre-built feature JSON | response JSON below |
+| `POST` | `/predict/live` | raw scrape (`site`, clocks, fen/moves, …) | same response shape |
+
+Live path: extension site adapters POST raw state → `live_features.py` builds the speed + feature vector (python-chess + optional Stockfish via `STOCKFISH_PATH`) → `oracle_predict`.
 
 **Dev base URL:** `http://127.0.0.1:8000`  
 **Content-Type:** `application/json`
@@ -89,7 +93,7 @@ This POSTs `examples.blitz_middlegame.request` from `dummy_predict.json` and pri
     "p_blunder": 0.12
   },
   "model": {
-    "version": "random-mvp-v0",
+    "version": "oracle-cpp-v1",
     "targets": ["time_spent", "blunder"]
   }
 }
@@ -97,10 +101,10 @@ This POSTs `examples.blitz_middlegame.request` from `dummy_predict.json` and pri
 
 | Field | Meaning | UI use |
 |---|---|---|
-| `time_spent_s` | Point estimate of think time (s) | Primary “typical think” number |
-| `time_spent_p50_s` | Median / typical (s) | Softer display |
-| `time_spent_p75_s` | Upper typical / nudge budget (s) | When elapsed exceeds this → nudge |
-| `p_blunder` | P(this move loses ≥ 20 win%) | Blunder chance meter (0–1) |
+| `time_spent_s` | Point estimate = model `think_median` (s) | Primary “typical think” number |
+| `time_spent_p50_s` | Model `think_median` (s) | Softer display |
+| `time_spent_p75_s` | Model `think_high` (upper of 80% range) | When elapsed exceeds this → nudge |
+| `p_blunder` | Model `p_blunder` in [0, 1] | Blunder chance meter |
 
 ## Using the dummy file (offline mock)
 
