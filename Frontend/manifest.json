@@ -20,6 +20,7 @@
         "shared/api.js",
         "shared/hud.js",
         "sites/chesscom.js",
+        "sites/chesscom_watch.js",
         "content.js"
       ],
       "run_at": "document_end"
