@@ -27,6 +27,10 @@ classical = ["clock_self", "clock_ratio", "frac_self",
              "wp_self", "abs_cp", "last_swing", "prior_blunders_self"]         # 16
 ```
 
+These arrays are exactly the input of the trained models' C++ predictor (`model_training/cpp`), in this order.
+Give it one move's vector (NaN where a feature isn't defined yet) and it returns the prediction vector
+`[think_low, think_median, think_high, p_blunder, flag_blunder, p_blunder_next5, flag_blunder_next5]`.
+
 ## Feature vector for each target (strongest first)
 
 ### Bullet

@@ -46,6 +46,23 @@ FEATURES = {
     },
 }
 
+# Per speed, every feature any of its 3 models needs (eda/FEATURE_SET.md arrays). This is the input vector of the
+# C++ predictor (cpp/), in exactly this order.
+SUPERSETS = {
+    "bullet": ["clock_self", "clock_opp", "clock_ratio", "base", "inc",
+               "prev_self_spent", "avg_self_spent", "prev_opp_spent",
+               "elo_self", "ply", "mat_total", "mat_diff", "n_legal", "n_captures",
+               "wp_self", "abs_cp", "last_swing", "prior_blunders_self"],
+    "blitz": ["clock_self", "clock_opp", "clock_ratio", "inc",
+              "prev_self_spent", "avg_self_spent", "prev_opp_spent",
+              "elo_self", "ply", "mat_total", "mat_diff", "n_legal", "n_captures",
+              "wp_self", "abs_cp", "last_swing", "prior_blunders_self"],
+    "classical": ["clock_self", "clock_ratio", "frac_self",
+                  "prev_self_spent", "avg_self_spent", "prev_opp_spent",
+                  "elo_self", "ply", "mat_total", "mat_diff", "n_legal", "n_captures",
+                  "wp_self", "abs_cp", "last_swing", "prior_blunders_self"],
+}
+
 # Domain knowledge the model may be forced to respect (+1 = prediction can only go up as the
 # feature goes up, -1 = only down). Applied only if cross-validation shows it costs no accuracy.
 MONOTONE = {

@@ -155,6 +155,8 @@ training games and applied unchanged to the test games. Codes: first digit = fla
 ```
 README.md          how to run and how to use the models
 REPORT.md          this file
+predict.py         PGN in, the 3 predictions per move out     requirements.txt  exact versions used
+cpp/               C++ predictor: superset feature vector in, 7-number prediction vector out (~50 µs per move)
 reports/RESULTS.md all test numbers + figures   reports/cv.md  cross-validation per model
 reports/<speed>/   blunder.png  blunder_next5.png  think_time.png  example_game.png
                    blunder_flags.png  blunder_next5_flags.png   (1/0 flag vs actual)

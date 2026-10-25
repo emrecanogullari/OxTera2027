@@ -91,23 +91,20 @@ def predict(model, X: pd.DataFrame, target: str) -> np.ndarray:
     return model.predict(X) if target == "think_time" else model.predict_proba(X)[:, 1]
 
 
-class ThinkTimeModel:
-    """Three quantile heads (10/50/90%) on log(1 + s + U[0,1)), sorted so they never cross,
-    with the outer two shifted by a conformal correction `widen` (log scale) learned on held-out games."""
+THINK_HEADS = dict(zip(THINK_QUANTILES, ("low", "median", "high")))
 
-    def __init__(self, heads: dict, widen: float):
-        self.heads, self.widen = heads, widen
 
-    def predict_log(self, X: pd.DataFrame) -> np.ndarray:
-        P = np.column_stack([self.heads[q].predict(X) for q in THINK_QUANTILES])
-        P.sort(axis=1)
-        P[:, 0] -= self.widen
-        P[:, 2] += self.widen
-        return P
-
-    def predict(self, X: pd.DataFrame) -> pd.DataFrame:
-        P = to_seconds(self.predict_log(X))
-        return pd.DataFrame({"low": P[:, 0], "median": P[:, 1], "high": P[:, 2]}, index=X.index)
+def think_time_predict(heads: dict, widen: float, X: pd.DataFrame) -> pd.DataFrame:
+    """Think time from the saved model: three plain scikit-learn quantile models ('low' 10%, 'median' 50%,
+    'high' 90%) that predict log(1 + seconds). Sort them per move so they never cross, shift the outer two by
+    the conformal correction `widen` (learned on held-out games), convert back to whole seconds.
+    That is the whole recipe, so anyone with scikit-learn can use the .joblib file without this code."""
+    P = np.column_stack([heads[k].predict(X) for k in ("low", "median", "high")])
+    P.sort(axis=1)
+    P[:, 0] -= widen
+    P[:, 2] += widen
+    S = to_seconds(P)
+    return pd.DataFrame({"low": S[:, 0], "median": S[:, 1], "high": S[:, 2]}, index=X.index)
 
 
 # --------------------------------------------------------------------------- #
@@ -294,9 +291,9 @@ def train_one(speed: str, target: str, moves: pd.DataFrame, log=print) -> dict:
         conformity = np.maximum(np.log1p(raw) - P[:, 2], P[:, 0] - np.log1p(raw + 1))
         n = len(y)
         widen = float(np.quantile(conformity, min(1.0, np.ceil((n + 1) * 0.8) / n)))
-        heads = {q: make_gbdt(target, features, params, use_mono, heads_iter[q], q).fit(X[features], y)
+        # plain scikit-learn objects keyed low/median/high: the .joblib loads without this code
+        model = {THINK_HEADS[q]: make_gbdt(target, features, params, use_mono, heads_iter[q], q).fit(X[features], y)
                  for q in THINK_QUANTILES}
-        model = ThinkTimeModel(heads, widen)
         lo, md, hi = to_seconds(P[:, 0] - widen), to_seconds(P[:, 1]), to_seconds(P[:, 2] + widen)
         cv_table = {name: think_scores(raw, to_seconds(o)) for name, o in compare.items()}
         cv_table["trees (chosen)"] = think_scores(raw, md, lo, hi)
@@ -305,7 +302,7 @@ def train_one(speed: str, target: str, moves: pd.DataFrame, log=print) -> dict:
         cb = pd.cut(d["clock_self"], clock_bins, right=False)
         baselines = {"global_median": float(np.median(raw)), "clock_bins": clock_bins,
                      "clock_bin_median": d.groupby(cb, observed=True)[col].median().to_dict()}
-        extra = {"heads_n_iter": heads_iter, "widen": widen}
+        extra = {"heads_n_iter": heads_iter, "widen": widen, "quantiles": {v: k for k, v in THINK_HEADS.items()}}
     else:
         model = make_gbdt(target, features, params, use_mono, n_iter).fit(X[features], y)
         base = float(y.mean())
@@ -352,7 +349,8 @@ def predict_moves(bundles: dict, moves: pd.DataFrame, rule: str | None = None) -
     plus the 1/0 flags (chance >= cutoff; saved rule 'accuracy' unless another rule is given)."""
     out = pd.DataFrame(index=moves.index)
     tt = bundles["think_time"]
-    out[["think_low", "think_median", "think_high"]] = tt["model"].predict(moves[tt["features"]]).to_numpy()
+    out[["think_low", "think_median", "think_high"]] = \
+        think_time_predict(tt["model"], tt["widen"], moves[tt["features"]]).to_numpy()
     for t in ("blunder", "blunder_next5"):
         b = bundles[t]
         out[f"p_{t}"] = b["model"].predict_proba(moves[b["features"]])[:, 1]

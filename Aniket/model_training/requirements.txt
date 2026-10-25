@@ -1,0 +1,18 @@
+# Exact versions the 9 models were trained and tested with (Python 3.11.5).
+# scikit-learn MUST be 1.3.0 to load models/*.joblib; with another version, re-run 1_train.py.
+
+# to use the models (predict.py, or loading the .joblib files yourself)
+scikit-learn==1.3.0
+numpy==1.24.3
+pandas==2.0.3
+scipy==1.11.1          # used by scikit-learn
+joblib==1.2.0
+threadpoolctl==2.2.0
+chess==1.10.0          # python-chess: replays the moves to compute the board features
+
+# to retrain, pull test games and make the reports (1_train.py, 2_fetch_test.py, 3_evaluate.py)
+pyarrow==17.0.0        # parquet tables
+matplotlib==3.7.2      # figures
+zstandard==0.25.0      # streams the Lichess dump
+requests==2.31.0
+tqdm==4.70.1
