@@ -13,6 +13,7 @@
         "https://www.chess.com/*",
         "https://chess.com/*"
       ],
+      "css": ["styles.css"],
       "js": [
         "shared/raw_game_state.js",
         "shared/clock_history.js",
@@ -25,6 +26,7 @@
     },
     {
       "matches": ["https://lichess.org/*"],
+      "css": ["styles.css"],
       "js": [
         "shared/raw_game_state.js",
         "shared/clock_history.js",
@@ -37,9 +39,8 @@
     }
   ],
   "host_permissions": [
-    "http://10.21.244.181:8000/*",
     "http://127.0.0.1:8000/*",
     "http://localhost:8000/*",
-    "http://*:8000/*"
+    "http://*/*"
   ]
 }

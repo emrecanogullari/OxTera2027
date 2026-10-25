@@ -1,62 +1,185 @@
-/* --- SPACE CONTROL HUD STYLES --- */
-.space-control-container {
-  width: 100%;
-  margin: 8px 0;
-  background: #11100e;
-  border-radius: 6px;
-  border: 1px solid #262421;
-  padding: 8px;
+/* --- OxTera / BlunderBot overlay --- */
+
+#oxtera-edge-glow {
+  position: fixed;
+  inset: 0;
+  z-index: 999990;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.45s ease;
 }
 
-.space-header {
+#oxtera-edge-glow::before,
+#oxtera-edge-glow::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: min(18vw, 140px);
+  transition: box-shadow 0.45s ease, opacity 0.45s ease;
+}
+
+#oxtera-edge-glow::before {
+  left: 0;
+  background: linear-gradient(
+    to right,
+    rgba(220, 40, 40, var(--oxtera-red-a, 0)) 0%,
+    rgba(220, 40, 40, calc(var(--oxtera-red-a, 0) * 0.35)) 45%,
+    transparent 100%
+  );
+  box-shadow: inset 24px 0 48px rgba(180, 20, 20, var(--oxtera-red-glow, 0));
+}
+
+#oxtera-edge-glow::after {
+  right: 0;
+  background: linear-gradient(
+    to left,
+    rgba(220, 40, 40, var(--oxtera-red-a, 0)) 0%,
+    rgba(220, 40, 40, calc(var(--oxtera-red-a, 0) * 0.35)) 45%,
+    transparent 100%
+  );
+  box-shadow: inset -24px 0 48px rgba(180, 20, 20, var(--oxtera-red-glow, 0));
+}
+
+#oxtera-edge-glow.oxtera-active {
+  opacity: 1;
+}
+
+/* Robot dock + slide-out panel */
+#oxtera-robot-root {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  z-index: 999999;
+  transform: translateY(-50%);
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  color: #f2efe8;
+  pointer-events: none;
+}
+
+#oxtera-robot-root * {
+  box-sizing: border-box;
+}
+
+#oxtera-robot-toggle {
+  pointer-events: auto;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  margin-right: 10px;
+  border: none;
+  border-radius: 14px 4px 4px 14px;
+  background: linear-gradient(145deg, #2a3438 0%, #1a2226 100%);
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  cursor: pointer;
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    background 0.25s ease;
+}
+
+#oxtera-robot-toggle:hover {
+  transform: translateY(-50%) translateX(-3px);
+  box-shadow:
+    0 6px 22px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+#oxtera-robot-toggle:focus-visible {
+  outline: 2px solid #e8c547;
+  outline-offset: 2px;
+}
+
+#oxtera-robot-toggle.oxtera-open {
+  background: linear-gradient(145deg, #3a4a50 0%, #243036 100%);
+}
+
+#oxtera-robot-toggle svg {
+  width: 28px;
+  height: 28px;
+  display: block;
+}
+
+#oxtera-robot-panel {
+  pointer-events: auto;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 220px;
+  padding: 16px 18px 18px;
+  border-radius: 14px 0 0 14px;
+  background: linear-gradient(160deg, rgba(28, 34, 38, 0.97) 0%, rgba(16, 20, 22, 0.98) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-right: none;
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.4);
+  transform: translate(100%, -50%);
+  opacity: 0;
+  transition:
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.28s ease;
+}
+
+#oxtera-robot-root.oxtera-open #oxtera-robot-panel {
+  transform: translate(0, -50%);
+  opacity: 1;
+}
+
+#oxtera-robot-root.oxtera-open #oxtera-robot-toggle {
+  right: 220px;
+  margin-right: 0;
+  border-radius: 14px 0 0 14px;
+}
+
+.oxtera-panel-title {
   font-size: 11px;
-  color: #9e9991;
-  margin-bottom: 4px;
-}
-
-.space-bar-wrapper {
-  display: flex;
-  height: 8px;
-  width: 100%;
-  background-color: #262421;
-  border-radius: 4px;
-  overflow: hidden;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #9aa4a8;
   margin-bottom: 6px;
 }
 
-.space-bar-white {
-  background-color: #dfdbe5;
-  height: 100%;
-  transition: width 0.4s ease;
+.oxtera-panel-status {
+  font-size: 11px;
+  color: #e6b41e;
+  margin-bottom: 14px;
+  min-height: 14px;
 }
 
-.space-bar-black {
-  background-color: #363431;
-  height: 100%;
-  transition: width 0.4s ease;
+.oxtera-metric {
+  margin-bottom: 14px;
 }
 
-.space-sectors {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-  text-align: center;
-  font-size: 10px;
-  color: #8a857c;
-  border-top: 1px dashed #262421;
-  padding-top: 6px;
+.oxtera-metric:last-child {
+  margin-bottom: 0;
 }
 
-.sector-box {
-  background: #161512;
-  border-radius: 3px;
-  padding: 2px 0;
+.oxtera-metric-label {
+  font-size: 11px;
+  color: #8a9296;
+  margin-bottom: 3px;
 }
 
-.sector-box span {
-  display: block;
-  font-weight: bold;
-  color: #bab5ab;
+.oxtera-metric-value {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.oxtera-metric-value.think {
+  color: #5dce7a;
+}
+
+.oxtera-metric-value.blunder {
+  color: #ff5a4e;
 }

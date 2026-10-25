@@ -26,7 +26,14 @@
   });
 
   Ox.injectHud();
-  if (typeof Ox.setHudStatus === "function") Ox.setHudStatus("scanning chess.com board…");
+  if (typeof Ox.setHudStatus === "function") {
+    const path = location.pathname || "";
+    const onGame =
+      siteId === "lichess"
+        ? /\/[A-Za-z0-9]{8}(?:\/|$)/.test(path)
+        : /\/(?:game|play)\/(?:live\/)?\d+/i.test(path);
+    Ox.setHudStatus(onGame ? "scanning board…" : "idle — open a live game");
+  }
 
   let inFlightKey = null;
   let lastDoneKey = null;
@@ -78,6 +85,6 @@
   if (first) {
     handleTurn(first);
   } else {
-    console.log("[OxTera] no game state yet at boot — waiting for board/clocks (see chesscom diagnose logs)");
+    console.log("[OxTera] no game state at boot — open/start a live game (adapter will pick it up)");
   }
 })();

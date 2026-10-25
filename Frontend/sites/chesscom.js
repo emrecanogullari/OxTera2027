@@ -276,6 +276,12 @@
     return match ? match[1] : location.pathname;
   }
 
+  /** True only on pages that can host a live board (not home / play lobby). */
+  function isLiveGamePath(pathname) {
+    const path = pathname || location.pathname || "";
+    return /\/(?:game|play)\/(?:live\/)?\d+/i.test(path) || /\/live\/?#?/i.test(path);
+  }
+
   const adapter = {
     matches(hostname) {
       return (hostname || "").toLowerCase().includes("chess.com");
@@ -323,25 +329,51 @@
     onTurnStart(callback) {
       let lastSig = "";
       let pending = null;
-      let lastDiagAt = 0;
+      let lastDiagKey = "";
       let lastHref = location.href;
+      let idleLogged = false;
       const tick = () => {
         if (location.href !== lastHref) {
           lastHref = location.href;
           lastSig = "";
-          console.warn("[OxTera chesscom] URL changed →", lastHref);
+          lastDiagKey = "";
+          idleLogged = false;
+          console.log("[OxTera chesscom] URL changed →", lastHref);
           if (typeof Ox.setHudStatus === "function") {
-            Ox.setHudStatus("navigated — rescanning board…");
+            Ox.setHudStatus(
+              isLiveGamePath(location.pathname)
+                ? "navigated — rescanning board…"
+                : "idle — open a live game"
+            );
           }
         }
+
+        // Home / play lobby: stay quiet. Content scripts match all chess.com pages.
+        if (!isLiveGamePath(location.pathname)) {
+          if (!idleLogged) {
+            idleLogged = true;
+            console.log("[OxTera chesscom] not on a live game URL — idle");
+            if (typeof Ox.setHudStatus === "function") {
+              Ox.setHudStatus("idle — open a live game");
+            }
+          }
+          return;
+        }
+
         const state = adapter.readGameState();
         if (!state) {
-          const now = Date.now();
-          if (now - lastDiagAt > 2000) {
-            lastDiagAt = now;
-            const d = diagnose();
-            // warn so it shows when the console filter hides "Info"
-            console.warn("[OxTera chesscom] waiting for live game DOM", d);
+          const d = diagnose();
+          const diagKey = [
+            d.board,
+            d.color,
+            d.clock_self_s,
+            d.clock_opp_s,
+            d.placement,
+          ].join("|");
+          // Log once per missing-field signature (not every 2s as a warn).
+          if (diagKey !== lastDiagKey) {
+            lastDiagKey = diagKey;
+            console.log("[OxTera chesscom] waiting for live game DOM", d);
             if (typeof Ox.setHudStatus === "function") {
               const missing = [];
               if (!d.board) missing.push("board");
@@ -356,7 +388,8 @@
         const sig = `${state.game_id || ""}|${state.ply}|${state.color}`;
         if (sig === lastSig) return;
         lastSig = sig;
-        console.warn("[OxTera chesscom] game state ready", {
+        lastDiagKey = "";
+        console.log("[OxTera chesscom] game state ready", {
           ply: state.ply,
           color: state.color,
           clocks: [state.clock_self_s, state.clock_opp_s],
