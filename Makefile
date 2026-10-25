@@ -2,52 +2,70 @@
 # work from OxTera2027 and from the OxHack2027 folder.
 
 OXTERA := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+EMRE := $(OXTERA)/Emre
 
 ifneq ($(wildcard /Library/Developer/CommandLineTools/.),)
   export DEVELOPER_DIR ?= /Library/Developer/CommandLineTools
 endif
 
 CXX ?= c++
-CXXFLAGS = -O3 -std=c++17 -Wall -Wextra -I$(OXTERA)/Emre/src -pthread
+CXXFLAGS = -O3 -std=c++17 -Wall -Wextra -pthread \
+	-I$(EMRE)/src/board \
+	-I$(EMRE)/src/candidates \
+	-I$(EMRE)/src/judge \
+	-I$(EMRE)/src/score \
+	-I$(EMRE)/src/stream \
+	-I$(EMRE)/src/readout \
+	-I$(EMRE)/src/demo
 LDFLAGS = -lcurl -pthread
 
-SRC = $(OXTERA)/Emre/src/board.cpp $(OXTERA)/Emre/src/candidates.cpp $(OXTERA)/Emre/src/judge.cpp $(OXTERA)/Emre/src/score.cpp $(OXTERA)/Emre/src/stream.cpp $(OXTERA)/Emre/src/readout.cpp $(OXTERA)/Emre/src/demo.cpp
-OBJ = $(SRC:$(OXTERA)/Emre/src/%.cpp=$(OXTERA)/Emre/build/%.o)
+SRC = $(EMRE)/src/board/board.cpp \
+	$(EMRE)/src/candidates/candidates.cpp \
+	$(EMRE)/src/judge/judge.cpp \
+	$(EMRE)/src/score/score.cpp \
+	$(EMRE)/src/stream/stream.cpp \
+	$(EMRE)/src/readout/readout.cpp \
+	$(EMRE)/src/demo/demo.cpp
+OBJ = $(SRC:$(EMRE)/src/%.cpp=$(EMRE)/build/%.o)
 
 .PHONY: all test examples replay watch pgn fetch clean
 
-all: $(OXTERA)/Emre/build/engine
+all: $(EMRE)/build/engine
 
-test: $(OXTERA)/Emre/build/test_engine
-	$(OXTERA)/Emre/build/test_engine
+test: $(EMRE)/build/test_engine
+	$(EMRE)/build/test_engine
 
-examples: $(OXTERA)/Emre/build/engine
-	$(OXTERA)/Emre/build/engine examples
+examples: $(EMRE)/build/engine
+	$(EMRE)/build/engine examples
 
-replay: $(OXTERA)/Emre/build/engine
-	$(OXTERA)/Emre/build/engine replay
+replay: $(EMRE)/build/engine
+	$(EMRE)/build/engine replay
 
-watch: $(OXTERA)/Emre/build/engine
+watch: $(EMRE)/build/engine
 	@test -n "$(GAME_ID)" || { echo "Usage: make watch GAME_ID=gameid"; exit 1; }
-	$(OXTERA)/Emre/build/engine watch $(GAME_ID)
+	$(EMRE)/build/engine watch $(GAME_ID)
 
-pgn: $(OXTERA)/Emre/build/engine
+pgn: $(EMRE)/build/engine
 	@test -n "$(PGN)" || { echo "Usage: make pgn PGN=path/to/game.pgn"; exit 1; }
-	$(OXTERA)/Emre/build/engine pgn $(PGN)
+	$(EMRE)/build/engine pgn $(PGN)
 
-fetch: $(OXTERA)/Emre/build/engine
+fetch: $(EMRE)/build/engine
 	@test -n "$(GAME_ID)" || { echo "Usage: make fetch GAME_ID=gameid"; exit 1; }
-	$(OXTERA)/Emre/build/engine fetch $(GAME_ID)
+	$(EMRE)/build/engine fetch $(GAME_ID)
 
-$(OXTERA)/Emre/build/engine: $(OBJ) $(OXTERA)/Emre/build/main.o
+$(EMRE)/build/engine: $(OBJ) $(EMRE)/build/app/main.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(OXTERA)/Emre/build/test_engine: $(OBJ) $(OXTERA)/Emre/build/test_engine.o
+$(EMRE)/build/test_engine: $(OBJ) $(EMRE)/build/tests/test_engine.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(OXTERA)/Emre/build/%.o: $(OXTERA)/Emre/src/%.cpp
-	@mkdir -p $(OXTERA)/Emre/build
+$(EMRE)/build/%.o: $(EMRE)/src/%.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+$(EMRE)/build/tests/test_engine.o: $(EMRE)/tests/test_engine.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 clean:
-	rm -rf $(OXTERA)/Emre/build
+	rm -rf $(EMRE)/build
