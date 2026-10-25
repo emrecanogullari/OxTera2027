@@ -680,8 +680,8 @@ def build_features(
         prior_blunders = float(sess.prior_blunders_self)
 
     # Engine features: eval of the position we are facing (= after opponent's last move).
-        snap = evaluate_board(board, depth=engine_depth)
-        engine_used = snap.cp is not None or snap.mate is not None or _ENGINE is not None
+    snap = evaluate_board(board, depth=engine_depth)
+    engine_used = snap.cp is not None or snap.mate is not None or _ENGINE is not None
 
     if snap.cp is None and snap.mate is None:
         wp_self = math.nan
