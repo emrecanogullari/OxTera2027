@@ -1,6 +1,6 @@
 # ♟️ Lichess Coaching HUD Extension
 
-A real-time behavioral metrics and coaching HUD for [Lichess.org](https://lichess.org). The extension injects an overlay into live Lichess games and analysis boards, using a local Python FastAPI backend to predict **Expected Thinking Time** and **Blunder Risk** based on game features.
+A real-time metrics and coaching HUD for [Lichess.org](https://lichess.org). The extension injects an overlay into live Lichess games and analysis boards, using a local Python FastAPI backend to predict **Expected Thinking Time** and **Blunder Risk** based on game features.
 
 ---
 
