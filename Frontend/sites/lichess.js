@@ -1,19 +1,19 @@
 /**
- * Lichess site adapter — DOM selectors live ONLY here.
- * Must not import or reuse chess.com selectors/parsers.
- * Implements: matches, readGameState, onTurnStart, destroy.
+ * Lichess page reader. HTML and CSS only — no lichess.analysis, no data-fen.
+ * Live games and the analysis page use different class names; both are handled here.
+ * The shared server turns this snapshot into the model vector.
  */
 (function (root) {
   const Ox = (root.OxTeraCoach = root.OxTeraCoach || {});
   Ox.sites = Ox.sites || {};
 
   const SITE = "lichess";
+  const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
+  const PIECE = { pawn: "p", knight: "n", bishop: "b", rook: "r", queen: "q", king: "k" };
 
   function parseClockText(text) {
     if (!text) return null;
-    const t = String(text).trim();
-    // Lichess often "0:45" or "1:02" or with tenths "0:45.1"
-    const cleaned = t.replace(/[^\d:.]/g, "");
+    const cleaned = String(text).trim().replace(/[^\d:.]/g, "");
     const parts = cleaned.split(":");
     if (parts.length < 2) return null;
     const mins = Number(parts[0]);
@@ -22,82 +22,169 @@
     return mins * 60 + secs;
   }
 
-  function parseTcFromUrlOrDom() {
-    // /blitz, setup, or .setup span like "3+2"
-    const setup = document.querySelector(".setup, .game__meta .setup, [data-setup]");
-    const raw =
-      (setup && (setup.getAttribute("data-setup") || setup.textContent)) ||
-      document.querySelector(".game__meta")?.textContent ||
-      "";
-    const m = String(raw).match(/(\d+)\+(\d+)/);
-    if (m) {
-      let base = Number(m[1]);
-      const inc = Number(m[2]);
-      if (base <= 30) base *= 60;
-      return { base_s: base, inc_s: inc };
-    }
-    // Path hints
-    const path = location.pathname.toLowerCase();
-    if (path.includes("bullet")) return { base_s: 60, inc_s: 0 };
-    if (path.includes("blitz")) return { base_s: 180, inc_s: 0 };
-    if (path.includes("classical")) return { base_s: 1800, inc_s: 0 };
-    return { base_s: 180, inc_s: 0 };
+  function textOf(el) {
+    return el ? String(el.textContent || "").trim() : "";
   }
 
-  function bottomIsWhite() {
-    // Lichess: body or cg-wrap orientation
-    const wrap = document.querySelector("cg-container, .cg-wrap, .main-board");
-    if (wrap && wrap.classList.contains("orientation-black")) return false;
-    const coords = document.querySelector(".cg-wrap.orientation-black");
-    if (coords) return false;
-    // rclock-bottom belongs to the player at the bottom
-    return true;
+  function ratingFrom(el) {
+    const text = el ? String(el.innerText || el.textContent || "") : "";
+    const paren = text.match(/\((\d{3,4})\)/);
+    if (paren) return Number(paren[1]);
+    const bare = text.match(/\b(\d{3,4})\b/);
+    return bare ? Number(bare[1]) : null;
+  }
+
+  function whiteAtBottom() {
+    const wrap = document.querySelector(".cg-wrap");
+    if (!wrap) return null;
+    return !wrap.classList.contains("orientation-black");
+  }
+
+  function clockElement(which) {
+    return (
+      document.querySelector(`.analyse__clock.${which}`) ||
+      document.querySelector(`.rclock-${which} .time`) ||
+      document.querySelector(`.rclock-${which}`)
+    );
   }
 
   function readClocks() {
-    const bottom = document.querySelector(".rclock-bottom .time, .rclock.rclock-bottom time, .rclock-bottom");
-    const top = document.querySelector(".rclock-top .time, .rclock.rclock-top time, .rclock-top");
     return {
-      clock_self_s: parseClockText(bottom && (bottom.textContent || "")),
-      clock_opp_s: parseClockText(top && (top.textContent || "")),
+      clock_self_s: parseClockText(textOf(clockElement("bottom"))),
+      clock_opp_s: parseClockText(textOf(clockElement("top"))),
     };
   }
 
-  function readRatings() {
-    const bottom = document.querySelector(".ruser-bottom .rating, .ruser.ruser-bottom rating");
-    const top = document.querySelector(".ruser-top .rating, .ruser.ruser-top rating");
-    const parse = (el) => {
-      if (!el) return null;
-      const m = String(el.textContent || "").match(/(\d{3,4})/);
-      return m ? Number(m[1]) : null;
+  /** "5+0" on Lichess is minutes + increment seconds. Fractions are sub-minute. */
+  function readTimeControl() {
+    const raw = textOf(document.querySelector(".setup")) || textOf(document.querySelector(".game__meta__infos"));
+    if (!raw) return null;
+    const incMatch = raw.match(/[+]\s*(\d+)/);
+    const inc = incMatch ? Number(incMatch[1]) : 0;
+    if (raw.includes("¼")) return { base_s: 15, inc_s: inc };
+    if (raw.includes("½")) return { base_s: 30, inc_s: inc };
+    if (raw.includes("¾")) return { base_s: 45, inc_s: inc };
+    const baseMatch = raw.match(/(\d+)\s*\+/);
+    if (!baseMatch) return null;
+    return { base_s: Number(baseMatch[1]) * 60, inc_s: inc };
+  }
+
+  function readRatings(selfIsWhite) {
+    const whiteEl =
+      document.querySelector(".player.color-icon.white") ||
+      document.querySelector(selfIsWhite ? ".ruser-bottom" : ".ruser-top");
+    const blackEl =
+      document.querySelector(".player.color-icon.black") ||
+      document.querySelector(selfIsWhite ? ".ruser-top" : ".ruser-bottom");
+    const players = document.querySelector(".game__meta__players");
+    let white = ratingFrom(whiteEl);
+    let black = ratingFrom(blackEl);
+    if ((white == null || black == null) && players) {
+      const found = [...String(players.innerText || "").matchAll(/\((\d{3,4})\)/g)].map((m) => Number(m[1]));
+      if (white == null && found[0] != null) white = found[0];
+      if (black == null && found[1] != null) black = found[1];
+    }
+    return {
+      elo_self: selfIsWhite ? white : black,
+      elo_opp: selfIsWhite ? black : white,
     };
-    return { elo_self: parse(bottom) ?? 1500, elo_opp: parse(top) ?? undefined };
   }
 
-  function readFen() {
-    // Lichess sometimes exposes FEN on cg-board via data or round data
-    const script = document.querySelector("#page-data, script[type='application/json']");
-    // Fallback: null — server can still use empty moves at start
-    void script;
-    const fenEl = document.querySelector("[data-fen]");
-    if (fenEl) return fenEl.getAttribute("data-fen");
-    return null;
+  function placementFromPieces(selfIsWhite) {
+    const board = document.querySelector("cg-board");
+    if (!board) return null;
+    const width = board.getBoundingClientRect().width;
+    if (!width) return null;
+    const sq = width / 8;
+    const grid = Array.from({ length: 8 }, () => Array(8).fill(""));
+    for (const piece of board.querySelectorAll("piece")) {
+      if (piece.classList.contains("ghost") || piece.classList.contains("dragging")) continue;
+      const cls = String(piece.className).split(/\s+/);
+      const kind = cls.find((c) => PIECE[c]);
+      if (!kind) continue;
+      const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(piece.style.transform || "");
+      if (!match) continue;
+      let file = Math.round(parseFloat(match[1]) / sq);
+      let row = Math.round(parseFloat(match[2]) / sq);
+      if (!selfIsWhite) {
+        file = 7 - file;
+        row = 7 - row;
+      }
+      if (file < 0 || file > 7 || row < 0 || row > 7) continue;
+      const letter = cls.includes("white") ? PIECE[kind].toUpperCase() : PIECE[kind];
+      grid[row][file] = letter;
+    }
+    const placement = grid
+      .map((rank) => {
+        let out = "";
+        let empty = 0;
+        for (let i = 0; i < 8; i += 1) {
+          if (!rank[i]) empty += 1;
+          else {
+            if (empty) {
+              out += empty;
+              empty = 0;
+            }
+            out += rank[i];
+          }
+        }
+        if (empty) out += empty;
+        return out;
+      })
+      .join("/");
+    return placement.includes("K") && placement.includes("k") ? placement : null;
   }
 
-  function readMovesUci() {
-    // Prefer leaving empty unless we have reliable UCI; SAN→UCI needs a board lib.
-    return [];
+  function sideLetter(selfIsWhite, movesPlayed) {
+    const bottomOn = document.querySelector(".analyse__clock.bottom.active, .rclock-bottom.running");
+    const topOn = document.querySelector(".analyse__clock.top.active, .rclock-top.running");
+    if (bottomOn && !topOn) return selfIsWhite ? "w" : "b";
+    if (topOn && !bottomOn) return selfIsWhite ? "b" : "w";
+    return movesPlayed % 2 === 0 ? "w" : "b";
   }
 
-  function readPly() {
-    const moves = document.querySelectorAll(".lichess-pgn-viewer moves kwdb, .moves m1, .moves m2, .tview2 move");
-    if (moves.length) return moves.length;
-    return undefined;
+  function mainlineMoves() {
+    const col =
+      document.querySelector(".analyse__moves .tview2-column") ||
+      document.querySelector(".rmoves .tview2-column") ||
+      document.querySelector(".tview2-column") ||
+      document.querySelector(".rmoves");
+    if (!col) return [];
+    const moves = [...col.querySelectorAll(":scope > move")];
+    if (moves.length) return moves;
+    return [...col.querySelectorAll(":scope > kwdb")];
+  }
+
+  function sanOf(moveEl) {
+    const san = moveEl.querySelector("san");
+    return textOf(san || moveEl).replace(/[+#?!]+$/g, "");
+  }
+
+  function readMoves(placement) {
+    const moves = mainlineMoves();
+    if (!moves.length) return { sans: [], movesPlayed: placement === START ? 0 : null };
+    const idx = moves.findIndex(
+      (move) => move.classList.contains("active") || move.classList.contains("current")
+    );
+    let slice;
+    if (idx >= 0) slice = moves.slice(0, idx + 1);
+    else if (placement === START) slice = [];
+    else slice = moves;
+    const sans = slice.map(sanOf).filter(Boolean);
+    return { sans, movesPlayed: sans.length };
+  }
+
+  /** Remaining clock printed on a move, when the page has one. Null if that move has none. */
+  function readMoveClocks(movesPlayed) {
+    return mainlineMoves()
+      .slice(0, movesPlayed)
+      .map((move) => parseClockText(textOf(move.querySelector("clock"))));
   }
 
   function readGameId() {
-    const m = location.pathname.match(/\/([a-zA-Z0-9]{8,12})(?:\/|$)/);
-    return m ? m[1] : location.pathname;
+    const parts = location.pathname.split("/").filter(Boolean);
+    const id = [...parts].reverse().find((part) => /^[A-Za-z0-9]{8}$/.test(part) && part !== "analysis");
+    return id || location.pathname;
   }
 
   const adapter = {
@@ -106,46 +193,72 @@
     },
 
     readGameState() {
+      const selfIsWhite = whiteAtBottom();
+      if (selfIsWhite == null) return null;
       const clocks = readClocks();
       if (clocks.clock_self_s == null || clocks.clock_opp_s == null) return null;
-      const tc = parseTcFromUrlOrDom();
-      const ratings = readRatings();
-      const whiteAtBottom = bottomIsWhite();
+      const tc = readTimeControl();
+      if (!tc) return null;
+      const ratings = readRatings(selfIsWhite);
+      if (ratings.elo_self == null || ratings.elo_opp == null) return null;
+      const placement = placementFromPieces(selfIsWhite);
+      if (!placement) return null;
+      const moves = readMoves(placement);
+      if (moves.movesPlayed == null) return null;
+      const played = moves.movesPlayed;
+      const side = sideLetter(selfIsWhite, played);
+      const moveClocks = readMoveClocks(played);
       return Ox.buildRawGameState({
         site: SITE,
         game_id: readGameId(),
-        color: whiteAtBottom ? "white" : "black",
+        color: selfIsWhite ? "white" : "black",
+        side_to_move: side === "w" ? "white" : "black",
         base_s: tc.base_s,
         inc_s: tc.inc_s,
         elo_self: ratings.elo_self,
         elo_opp: ratings.elo_opp,
         clock_self_s: clocks.clock_self_s,
         clock_opp_s: clocks.clock_opp_s,
-        fen: readFen() || undefined,
-        moves_uci: readMovesUci(),
-        ply: readPly(),
+        placement,
+        moves_san: moves.sans,
+        move_clocks: moveClocks.some((value) => value != null) ? moveClocks : undefined,
+        ply: played + 1,
       });
     },
 
     onTurnStart(callback) {
-      let lastPly = -1;
+      let lastSig = "";
+      let pending = null;
       const tick = () => {
         const state = adapter.readGameState();
         if (!state) return;
-        const ply = state.ply != null ? state.ply : 0;
-        if (ply !== lastPly) {
-          lastPly = ply;
-          try {
-            callback(state);
-          } catch (err) {
-            console.error("[OxTera lichess] onTurnStart callback failed", err);
-          }
+        const sig = `${state.placement}|${state.ply}|${state.side_to_move}`;
+        if (sig === lastSig) return;
+        lastSig = sig;
+        try {
+          callback(state);
+        } catch (err) {
+          console.error("[OxTera lichess] onTurnStart callback failed", err);
         }
       };
-      adapter._timer = setInterval(tick, 1000);
-      setTimeout(tick, 800);
-      adapter._observer = new MutationObserver(() => {});
-      adapter._observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      const schedule = () => {
+        if (pending) clearTimeout(pending);
+        pending = setTimeout(tick, 32);
+      };
+      adapter._observer = new MutationObserver(schedule);
+      const board = document.querySelector("cg-board") || document.body;
+      adapter._observer.observe(board, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "style"],
+      });
+      const moves = document.querySelector(".analyse__moves, .rmoves");
+      if (moves) {
+        adapter._observer.observe(moves, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+      }
+      // One look after the board paints. Later reads happen when the pieces or the move list change.
+      requestAnimationFrame(() => requestAnimationFrame(tick));
     },
 
     destroy() {

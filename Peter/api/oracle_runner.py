@@ -287,11 +287,19 @@ def _run_inprocess(speed: str, feature_keys: list[str], features: dict[str, floa
     return model.predict(x)
 
 
+def preload() -> None:
+    """Read the model files once. Later moves do not parse them again or start a process."""
+    for speed in ("bullet", "blitz", "classical"):
+        path = MODEL_PATHS[speed]
+        if path.is_file() and speed not in _MODEL_CACHE:
+            _MODEL_CACHE[speed] = _Model(path)
+
+
 def predict(speed: str, feature_keys: list[str], features: dict[str, float | int]) -> OraclePrediction:
-    """Prefer the C++ CLI; fall back to the in-process loader if it cannot run."""
-    csv_text = features_to_csv(feature_keys, features)
-    force_py = os.environ.get("OXTERA_ORACLE_PYTHON", "").strip() in {"1", "true", "yes"}
-    if not force_py:
+    """Use the model already loaded in this process. A CLI process is opt-in."""
+    use_cli = os.environ.get("OXTERA_ORACLE_CLI", "").strip().lower() in {"1", "true", "yes"}
+    if use_cli:
+        csv_text = features_to_csv(feature_keys, features)
         try:
             return _run_cli(speed, csv_text)
         except (FileNotFoundError, OSError, subprocess.SubprocessError, RuntimeError):

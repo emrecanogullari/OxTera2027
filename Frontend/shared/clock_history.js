@@ -46,11 +46,12 @@
     const g = games.get(keyOf(state));
     const out = Object.assign({}, state);
     if (!g) return out;
-    if (g.selfSpents.length) {
+    // A site that already read think times from the move list keeps those numbers.
+    if (out.prev_self_spent == null && g.selfSpents.length) {
       out.prev_self_spent = g.selfSpents[g.selfSpents.length - 1];
       out.avg_self_spent = g.selfSpents.reduce((a, b) => a + b, 0) / g.selfSpents.length;
     }
-    if (!Number.isNaN(g.prevOpp)) out.prev_opp_spent = g.prevOpp;
+    if (out.prev_opp_spent == null && !Number.isNaN(g.prevOpp)) out.prev_opp_spent = g.prevOpp;
     return out;
   };
 })(typeof globalThis !== "undefined" ? globalThis : window);

@@ -2,8 +2,7 @@
 (function (root) {
   const Ox = (root.OxTeraCoach = root.OxTeraCoach || {});
 
-  // Teammates on LAN: change host to the machine running uvicorn (e.g. 10.21.244.181).
-  Ox.BACKEND_BASE = "http://10.21.244.181:8000";
+  Ox.BACKEND_BASE = "http://127.0.0.1:8000";
 
   /**
    * @param {object} rawGameState

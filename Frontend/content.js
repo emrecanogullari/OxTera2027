@@ -20,20 +20,30 @@
 
   async function handleTurn(raw) {
     if (!raw) return;
-    Ox.recordClocks(raw);
-    const enriched = Ox.enrichWithSpend(raw);
+    let payload = raw;
+    if (raw.site !== "lichess") {
+      Ox.recordClocks(raw);
+      payload = Ox.enrichWithSpend(raw);
+      const sideToMove = payload.ply % 2 === 1 ? "white" : "black";
+      if (payload.ply != null && sideToMove !== payload.color) return;
+    }
+    const sideToMove = payload.side_to_move || (payload.ply % 2 === 1 ? "white" : "black");
     console.log("[OxTera] turn scrape", {
-      site: enriched.site,
-      game_id: enriched.game_id,
-      color: enriched.color,
-      ply: enriched.ply,
-      clocks: [enriched.clock_self_s, enriched.clock_opp_s],
-      tc: `${enriched.base_s}+${enriched.inc_s}`,
-      fen: enriched.fen,
-      moves: (enriched.moves_uci || []).length,
+      site: payload.site,
+      game_id: payload.game_id,
+      color: payload.color,
+      side_to_move: sideToMove,
+      ply: payload.ply,
+      clocks: [payload.clock_self_s, payload.clock_opp_s],
+      tc: `${payload.base_s}+${payload.inc_s}`,
+      placement: payload.placement,
+      moves: (payload.moves_san || payload.moves_uci || []).length,
     });
     try {
-      const data = await Ox.predictLive(enriched);
+      const data = await Ox.predictLive(payload);
+      // Opponent turns are sent so the server can search while they think.
+      // The panel only shows the position we are about to play.
+      if (payload.ply != null && sideToMove !== payload.color) return;
       Ox.applyPredictions(data);
     } catch (err) {
       console.error("[OxTera] predict/live failed", err);

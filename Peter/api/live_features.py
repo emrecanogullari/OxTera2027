@@ -143,6 +143,7 @@ class GameSession:
 
 
 _SESSIONS: dict[str, GameSession] = {}
+_PAGE: dict[str, "PageLedger"] = {}
 _ENGINE: chess.engine.SimpleEngine | None = None
 _ENGINE_PATH: str | None = None
 _ENGINE_FAILED = False
@@ -177,11 +178,18 @@ def _get_engine() -> chess.engine.SimpleEngine | None:
         return None
 
 
-def evaluate_board(board: chess.Board, depth: int = 12) -> EvalSnapshot:
+def evaluate_board(
+    board: chess.Board,
+    depth: int | None = None,
+    movetime: float | None = None,
+) -> EvalSnapshot:
     engine = _get_engine()
     if engine is None:
         return EvalSnapshot()
-    limit = chess.engine.Limit(depth=depth)
+    if depth is not None:
+        limit = chess.engine.Limit(depth=depth)
+    else:
+        limit = chess.engine.Limit(time=0.02 if movetime is None else movetime)
     info = engine.analyse(board, limit)
     score = info["score"].white()
     if score.is_mate():
@@ -190,19 +198,47 @@ def evaluate_board(board: chess.Board, depth: int = 12) -> EvalSnapshot:
     return EvalSnapshot(cp=float(score.score(mate_score=CP_CAP)), mate=None)
 
 
-def _board_from_state(moves_uci: list[str], fen: str | None) -> chess.Board:
-    if fen:
+def _board_from_fen(fen: str) -> chess.Board:
+    try:
+        return chess.Board(fen)
+    except ValueError as exc:
+        raise LiveFeatureError(f"invalid fen: {exc}") from exc
+
+
+def _board_from_state(raw: dict[str, Any]) -> tuple[chess.Board, bool]:
+    """Return the board and whether the move list was the source.
+
+    The move list carries castling and en passant. If its piece placement
+    disagrees with the pieces read off the page, the page wins.
+    """
+    sans = [str(s).strip() for s in (raw.get("moves_san") or []) if str(s).strip()]
+    moves_uci = [str(u).strip() for u in (raw.get("moves_uci") or []) if str(u).strip()]
+    fen = raw.get("fen") or None
+    screen = _board_from_fen(fen) if fen else None
+
+    if sans:
+        board = chess.Board()
         try:
-            return chess.Board(fen)
+            for i, san in enumerate(sans):
+                board.push_san(san)
         except ValueError as exc:
-            raise LiveFeatureError(f"invalid fen: {exc}") from exc
+            if screen is not None:
+                return screen, False
+            raise LiveFeatureError(f"invalid san at index {i} ({san!r}): {exc}") from exc
+        if screen is not None and board.board_fen() != screen.board_fen():
+            return screen, False
+        return board, True
+
+    if screen is not None:
+        return screen, False
+
     board = chess.Board()
     for i, uci in enumerate(moves_uci):
         try:
             board.push_uci(uci)
         except ValueError as exc:
             raise LiveFeatureError(f"invalid move at index {i} ({uci!r}): {exc}") from exc
-    return board
+    return board, True
 
 
 def _session_for(raw: dict[str, Any]) -> GameSession:
@@ -233,8 +269,329 @@ def _update_spend_history(sess: GameSession, clock_self: float, clock_opp: float
     sess.last_ply = ply
 
 
-def build_features(raw: dict[str, Any], *, engine_depth: int = 12) -> tuple[str, dict[str, float], bool]:
+def _nan_pad(values: list[float], index: int) -> None:
+    while len(values) <= index:
+        values.append(math.nan)
+
+
+def _think_seconds(clk_before: float | None, clk_after: float | None, inc: float, first_move: bool) -> float:
+    """Aniket's think time. Each side's first move is empty, not zero."""
+    if first_move or clk_before is None or clk_after is None:
+        return math.nan
+    return max(0.0, clk_before - clk_after + inc)
+
+
+@dataclass
+class PageLedger:
+    """One live game. Clocks and evals are kept so the next turn does not recompute them."""
+
+    game_id: str
+    human: Color
+    base_s: float
+    inc_s: float
+    sans: list[str] = field(default_factory=list)
+    board: chess.Board = field(default_factory=chess.Board)
+    white_clock: float | None = None
+    black_clock: float | None = None
+    spent: list[float] = field(default_factory=lambda: [math.nan])
+    wp_white: list[float] = field(default_factory=lambda: [math.nan])
+    cp_white: list[float] = field(default_factory=lambda: [math.nan])
+    drop: list[float] = field(default_factory=lambda: [math.nan])
+    berserk: dict[str, bool] = field(default_factory=lambda: {"white": False, "black": False})
+    saw_clock: dict[str, bool] = field(default_factory=lambda: {"white": False, "black": False})
+    html_clocks: list[float | None] = field(default_factory=list)
+
+
+def _page_ledger(raw: dict[str, Any]) -> PageLedger:
+    game_id = str(raw.get("game_id") or "unknown")
+    human: Color = "black" if str(raw.get("color", "white")).lower().startswith("b") else "white"
+    base_s = float(raw["base_s"])
+    inc_s = float(raw["inc_s"])
+    ledger = _PAGE.get(game_id)
+    if ledger is None or ledger.human != human or ledger.base_s != base_s or ledger.inc_s != inc_s:
+        ledger = PageLedger(game_id=game_id, human=human, base_s=base_s, inc_s=inc_s)
+        _PAGE[game_id] = ledger
+    return ledger
+
+
+def _absolute_clocks(raw: dict[str, Any], human: Color) -> tuple[float, float]:
+    """Bottom clock is the human's clock. Return white, black."""
+    bottom = float(raw["clock_self_s"])
+    top = float(raw["clock_opp_s"])
+    if human == "white":
+        return bottom, top
+    return top, bottom
+
+
+def _note_berserk(ledger: PageLedger, side: str, clock: float) -> None:
+    if ledger.saw_clock[side]:
+        return
+    ledger.saw_clock[side] = True
+    if ledger.base_s > 0 and clock < 0.9 * ledger.base_s:
+        ledger.berserk[side] = True
+
+
+def _replay(ledger: PageLedger, sans: list[str]) -> list[str] | None:
+    """Push new moves. None means the list jumped, so old think times are dropped."""
+    if sans[: len(ledger.sans)] == ledger.sans:
+        added = sans[len(ledger.sans) :]
+        for san in added:
+            try:
+                ledger.board.push_san(san)
+            except ValueError as exc:
+                raise LiveFeatureError(f"invalid san {san!r}: {exc}") from exc
+        ledger.sans = list(sans)
+        return added
+    board = chess.Board()
+    for san in sans:
+        try:
+            board.push_san(san)
+        except ValueError as exc:
+            raise LiveFeatureError(f"invalid san {san!r}: {exc}") from exc
+    ledger.board = board
+    ledger.sans = list(sans)
+    ledger.spent = [math.nan]
+    ledger.wp_white = [math.nan]
+    ledger.cp_white = [math.nan]
+    ledger.drop = [math.nan]
+    ledger.white_clock = None
+    ledger.black_clock = None
+    ledger.html_clocks = []
+    return None
+
+
+def _record_spend(ledger: PageLedger, added: list[str] | None, white_clk: float, black_clk: float) -> None:
+    if added is None:
+        return
+    if len(added) != 1 or ledger.white_clock is None or ledger.black_clock is None:
+        for _ in added:
+            ledger.spent.append(math.nan)
+        return
+    mover = "white" if (len(ledger.sans) % 2 == 1) else "black"
+    before = ledger.white_clock if mover == "white" else ledger.black_clock
+    after = white_clk if mover == "white" else black_clk
+    ply = len(ledger.sans)
+    inc = 0.0 if ledger.berserk[mover] else ledger.inc_s
+    ledger.spent.append(_think_seconds(before, after, inc, ply <= 2))
+
+
+def _check_move_clocks(ledger: PageLedger, raw: dict[str, Any], white_clk: float, black_clk: float) -> None:
+    clocks = raw.get("move_clocks")
+    if not clocks:
+        return
+    sans = ledger.sans
+    if len(clocks) != len(sans):
+        raise LiveFeatureError("move clocks do not line up with the move list")
+    if sans:
+        printed = clocks[-1]
+        if printed is not None:
+            mover_white = len(sans) % 2 == 1
+            big = white_clk if mover_white else black_clk
+            if abs(float(printed) - big) > 1.0:
+                raise LiveFeatureError(
+                    f"clock on {sans[-1]} is {printed}s, the board clock is {big}s"
+                )
+    for index, printed in enumerate(clocks):
+        if printed is None or index >= len(ledger.html_clocks):
+            continue
+        previous = ledger.html_clocks[index]
+        if previous is not None and abs(float(printed) - float(previous)) > 1.0:
+            raise LiveFeatureError(f"move {index + 1} clock changed from {previous}s to {printed}s")
+    ledger.html_clocks = [None if value is None else float(value) for value in clocks]
+
+
+def _fill_spends_from_printed_clocks(ledger: PageLedger) -> None:
+    """Use per-move clocks from the page when we did not watch those moves happen."""
+    clocks = ledger.html_clocks
+    if not clocks or any(value is None for value in clocks):
+        return
+    if any(not math.isnan(value) for value in ledger.spent[1:]):
+        return
+    prev = {"white": None, "black": None}
+    spent = [math.nan]
+    for index, clk_after in enumerate(clocks):
+        ply = index + 1
+        mover = "white" if ply % 2 == 1 else "black"
+        inc = 0.0 if ledger.berserk[mover] else ledger.inc_s
+        spent.append(_think_seconds(prev[mover], clk_after, inc, ply <= 2))
+        prev[mover] = clk_after
+    ledger.spent = spent
+
+
+def _earlier_spends(ledger: PageLedger, side: str, ply: int) -> tuple[float, float]:
+    start = 1 if side == "white" else 2
+    values: list[float] = []
+    cursor = start
+    while cursor < ply:
+        if cursor < len(ledger.spent) and not math.isnan(ledger.spent[cursor]):
+            values.append(ledger.spent[cursor])
+        cursor += 2
+    if not values:
+        return math.nan, math.nan
+    return values[-1], sum(values) / len(values)
+
+
+def _prior_blunders(ledger: PageLedger, side: str, ply: int) -> float:
+    start = 1 if side == "white" else 2
+    count = 0
+    cursor = start
+    while cursor < ply:
+        if cursor < len(ledger.drop) and not math.isnan(ledger.drop[cursor]) and ledger.drop[cursor] >= BLUNDER_PTS:
+            count += 1
+        cursor += 2
+    return float(count)
+
+
+def _search_position(board: chess.Board, *, engine_depth: int | None, movetime: float | None) -> EvalSnapshot:
+    if movetime == 0:
+        return EvalSnapshot()
+    if engine_depth is not None:
+        return evaluate_board(board, depth=engine_depth)
+    return evaluate_board(board, movetime=0.02 if movetime is None else movetime)
+
+
+def _build_from_placement(
+    raw: dict[str, Any],
+    *,
+    engine_depth: int | None,
+    movetime: float | None,
+) -> tuple[str, dict[str, float], bool]:
+    """Lichess path: replay the move list, keep it only if it matches the piece picture."""
+    required = ("base_s", "inc_s", "clock_self_s", "clock_opp_s", "elo_self", "color", "placement")
+    missing = [key for key in required if raw.get(key) is None]
+    if missing:
+        raise LiveFeatureError(f"missing required fields: {missing}")
+
+    base_s = float(raw["base_s"])
+    inc_s = float(raw["inc_s"])
+    speed = model_speed_or_raise(base_s, inc_s)
+    ledger = _page_ledger(raw)
+    white_clk, black_clk = _absolute_clocks(raw, ledger.human)
+    sans = [str(san).strip() for san in (raw.get("moves_san") or []) if str(san).strip()]
+    # Berserk is "the clock at move 1 is under 90% of the base". A later clock is not that.
+    if not sans:
+        _note_berserk(ledger, "white", white_clk)
+        _note_berserk(ledger, "black", black_clk)
+    saved = (
+        list(ledger.sans),
+        ledger.board.copy(stack=True),
+        list(ledger.spent),
+        list(ledger.wp_white),
+        list(ledger.cp_white),
+        list(ledger.drop),
+        ledger.white_clock,
+        ledger.black_clock,
+        list(ledger.html_clocks),
+    )
+    try:
+        added = _replay(ledger, sans)
+        picture = str(raw["placement"]).split()[0]
+        if ledger.board.board_fen() != picture:
+            raise LiveFeatureError("piece picture does not match the move list")
+        side = "white" if ledger.board.turn == chess.WHITE else "black"
+        asked = raw.get("side_to_move")
+        if asked is not None and str(asked).lower() not in {side, side[0]}:
+            raise LiveFeatureError(f"highlighted clock says {asked} to move, move list says {side}")
+        _record_spend(ledger, added, white_clk, black_clk)
+        _check_move_clocks(ledger, raw, white_clk, black_clk)
+        _fill_spends_from_printed_clocks(ledger)
+    except LiveFeatureError:
+        (
+            ledger.sans,
+            ledger.board,
+            ledger.spent,
+            ledger.wp_white,
+            ledger.cp_white,
+            ledger.drop,
+            ledger.white_clock,
+            ledger.black_clock,
+            ledger.html_clocks,
+        ) = saved
+        raise
+    ledger.white_clock = white_clk
+    ledger.black_clock = black_clk
+
+    ply = len(ledger.sans) + 1
+    clock_self = white_clk if side == "white" else black_clk
+    clock_opp = black_clk if side == "white" else white_clk
+    if side == ledger.human:
+        elo_self = float(raw["elo_self"])
+    elif raw.get("elo_opp") is None:
+        raise LiveFeatureError("missing opponent rating")
+    else:
+        elo_self = float(raw["elo_opp"])
+
+    prev_self, avg_self = _earlier_spends(ledger, side, ply)
+    prev_opp = ledger.spent[ply - 1] if ply - 1 < len(ledger.spent) else math.nan
+
+    wp_self = math.nan
+    abs_cp = math.nan
+    last_swing = math.nan
+    engine_used = False
+    if ply > 1 and movetime != 0:
+        snap = _search_position(ledger.board, engine_depth=engine_depth, movetime=movetime)
+        engine_used = snap.cp is not None or snap.mate is not None or _ENGINE is not None
+        if snap.cp is not None or snap.mate is not None:
+            _nan_pad(ledger.wp_white, ply - 1)
+            _nan_pad(ledger.cp_white, ply - 1)
+            ledger.wp_white[ply - 1] = snap.wp_white
+            if snap.mate is not None:
+                ledger.cp_white[ply - 1] = float(CP_CAP if snap.mate > 0 else -CP_CAP)
+                abs_cp = float(CP_CAP)
+            else:
+                ledger.cp_white[ply - 1] = float(snap.cp or 0.0)
+                abs_cp = abs(float(snap.cp or 0.0))
+            wp_self = snap.wp_white if side == "white" else 100.0 - snap.wp_white
+            finished = ply - 1
+            before = ledger.wp_white[finished - 1] if finished - 1 < len(ledger.wp_white) else math.nan
+            after = ledger.wp_white[finished]
+            if finished >= 2 and not math.isnan(before) and not math.isnan(after):
+                if finished % 2 == 1:
+                    swing = before - after
+                else:
+                    swing = (100.0 - before) - (100.0 - after)
+                _nan_pad(ledger.drop, finished)
+                ledger.drop[finished] = swing
+                last_swing = swing
+    elif ply == 1 and movetime != 0:
+        engine_used = find_stockfish() is not None and not _ENGINE_FAILED
+
+    pos = position_features(ledger.board)
+    features: dict[str, float] = {
+        "clock_self": clock_self,
+        "clock_opp": clock_opp,
+        "clock_ratio": clock_self / max(clock_opp, 1.0),
+        "frac_self": (clock_self / base_s) if base_s > 0 else math.nan,
+        "base": base_s,
+        "inc": inc_s,
+        "prev_self_spent": prev_self,
+        "avg_self_spent": avg_self,
+        "prev_opp_spent": prev_opp,
+        "elo_self": elo_self,
+        "ply": float(ply),
+        "mat_total": pos["mat_total"],
+        "mat_diff": pos["mat_diff"],
+        "n_legal": pos["n_legal"],
+        "n_captures": pos["n_captures"],
+        "wp_self": wp_self,
+        "abs_cp": abs_cp,
+        "last_swing": last_swing,
+        "prior_blunders_self": _prior_blunders(ledger, side, ply),
+    }
+    return speed, {key: features[key] for key in FEATURE_KEYS_BY_SPEED[speed]}, engine_used
+
+
+def build_features(
+    raw: dict[str, Any],
+    *,
+    engine_depth: int | None = None,
+    movetime: float | None = None,
+) -> tuple[str, dict[str, float], bool]:
     """Return (model_speed, feature_dict, engine_used)."""
+    if raw.get("placement"):
+        return _build_from_placement(raw, engine_depth=engine_depth, movetime=movetime)
+    if engine_depth is None:
+        engine_depth = 12
     required = ("base_s", "inc_s", "clock_self_s", "clock_opp_s", "elo_self", "color")
     missing = [k for k in required if k not in raw or raw[k] is None]
     if missing:
@@ -247,11 +604,18 @@ def build_features(raw: dict[str, Any], *, engine_depth: int = 12) -> tuple[str,
     clock_self = float(raw["clock_self_s"])
     clock_opp = float(raw["clock_opp_s"])
     elo_self = float(raw["elo_self"])
-    moves_uci = list(raw.get("moves_uci") or [])
-    fen = raw.get("fen")
-    ply = int(raw["ply"]) if raw.get("ply") is not None else len(moves_uci) + 1
+    board, used_move_list = _board_from_state(raw)
+    if used_move_list and raw.get("ply") is not None:
+        ply = int(raw["ply"])
+    elif used_move_list and board.move_stack:
+        ply = len(board.move_stack) + 1
+    else:
+        # Piece placement only. Its fullmove and side describe the screen,
+        # including when a longer move list was rejected.
+        ply = (board.fullmove_number - 1) * 2 + (1 if board.turn == chess.WHITE else 2)
+    if (ply % 2 == 1) != (board.turn == chess.WHITE):
+        ply = (board.fullmove_number - 1) * 2 + (1 if board.turn == chess.WHITE else 2)
 
-    board = _board_from_state(moves_uci, fen)
     pos = position_features(board)
 
     color: Color = "black" if str(raw["color"]).lower().startswith("b") else "white"
@@ -307,12 +671,11 @@ def build_features(raw: dict[str, Any], *, engine_depth: int = 12) -> tuple[str,
     # Update session after we have a prediction for next turn's last_swing / blunders.
     # When we later see the opponent move, the extension will call again; we track
     # wp_drop once we re-evaluate after our move is in moves_uci.
-    if len(moves_uci) > 0 and engine_used:
+    if board.move_stack and engine_used:
         # Eval after previous ply (position before last move) vs now for swing tracking.
-        prev_board = chess.Board()
+        prev_board = board.copy(stack=True)
         try:
-            for uci in moves_uci[:-1]:
-                prev_board.push_uci(uci)
+            prev_board.pop()
             prev_snap = evaluate_board(prev_board, depth=engine_depth)
             if prev_snap.cp is not None or prev_snap.mate is not None:
                 prev_wp_w = prev_snap.wp_white
@@ -363,6 +726,12 @@ def build_features(raw: dict[str, Any], *, engine_depth: int = 12) -> tuple[str,
 
 def clear_sessions() -> None:
     _SESSIONS.clear()
+    _PAGE.clear()
+
+
+def warm_engine() -> None:
+    """Start Stockfish once, so the first move does not pay for process startup."""
+    _get_engine()
 
 
 def shutdown_engine() -> None:

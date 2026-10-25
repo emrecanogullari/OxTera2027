@@ -17,8 +17,10 @@ from live_features import (
     LiveFeatureError,
     build_features,
     shutdown_engine,
+    warm_engine,
 )
 from oracle_runner import predict as oracle_predict
+from oracle_runner import preload as preload_oracle
 
 logger = logging.getLogger("oxtera.predict")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -67,7 +69,14 @@ class LivePredictRequest(BaseModel):
     clock_self_s: float
     clock_opp_s: float
     fen: str | None = None
+    # Piece picture from the page, the ranks only, used to check the move list.
+    placement: str | None = None
+    side_to_move: Literal["white", "black"] | None = None
     moves_uci: list[str] = Field(default_factory=list)
+    # SAN of the moves already played, read from the on-screen move list.
+    moves_san: list[str] = Field(default_factory=list)
+    # Remaining clock printed on each move, when the page has one.
+    move_clocks: list[float | None] | None = None
     ply: int | None = None
     # Optional spend / tilt overrides from extension clock_history
     prev_self_spent: float | None = None
@@ -182,6 +191,12 @@ def _run_oracle(
         model=ModelInfo(version=MODEL_VERSION + version_suffix, targets=["time_spent", "blunder"]),
         debug=debug,
     )
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    preload_oracle()
+    warm_engine()
 
 
 @app.on_event("shutdown")
