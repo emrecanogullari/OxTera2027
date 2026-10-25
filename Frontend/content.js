@@ -77,7 +77,25 @@
         body: JSON.stringify({
           speed: "blitz",
           game_id: "lichess_game_test",
-          features: {}
+          features: {
+             "clock_self": 142.0,
+          "clock_opp": 155.0,
+          "clock_ratio": 0.916,
+          "inc": 0,
+          "prev_self_spent": 3.0,
+          "avg_self_spent": 4.5,
+          "prev_opp_spent": 2.0,
+          "elo_self": 1510,
+          "ply": 28,
+          "mat_total": 62,
+          "mat_diff": 0,
+          "n_legal": 34,
+          "n_captures": 5,
+          "wp_self": 48.2,
+          "abs_cp": 12,
+          "last_swing": 8.5,
+          "prior_blunders_self": 1
+          }
         })
       });
 
