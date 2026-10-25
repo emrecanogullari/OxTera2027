@@ -102,7 +102,7 @@ def build_predict_request() -> dict[str, Any]:
 #     "p_blunder": 0.12                    # blunder chance in [0, 1]
 #   },
 #   "model": {
-#     "version": "random-mvp-v0",
+#     "version": "oracle-cpp-v1",
 #     "targets": ["time_spent", "blunder"]
 #   }
 # }
