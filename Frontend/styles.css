@@ -1,0 +1,62 @@
+/* --- SPACE CONTROL HUD STYLES --- */
+.space-control-container {
+  width: 100%;
+  margin: 8px 0;
+  background: #11100e;
+  border-radius: 6px;
+  border: 1px solid #262421;
+  padding: 8px;
+}
+
+.space-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #9e9991;
+  margin-bottom: 4px;
+}
+
+.space-bar-wrapper {
+  display: flex;
+  height: 8px;
+  width: 100%;
+  background-color: #262421;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.space-bar-white {
+  background-color: #dfdbe5;
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.space-bar-black {
+  background-color: #363431;
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
+.space-sectors {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  text-align: center;
+  font-size: 10px;
+  color: #8a857c;
+  border-top: 1px dashed #262421;
+  padding-top: 6px;
+}
+
+.sector-box {
+  background: #161512;
+  border-radius: 3px;
+  padding: 2px 0;
+}
+
+.sector-box span {
+  display: block;
+  font-weight: bold;
+  color: #bab5ab;
+}
