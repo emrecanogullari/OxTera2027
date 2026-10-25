@@ -4,7 +4,7 @@
  *
  * IMPORTANT: change BACKEND_BASE here only — never fetch from content scripts.
  */
-const BACKEND_BASE = "http://127.0.0.1:8000";
+const BACKEND_BASE = "http://10.21.244.181:8000";
 const PROXY_VERSION = "1.3.2";
 
 chrome.runtime.onInstalled.addListener(() => {
