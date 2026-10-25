@@ -16,6 +16,8 @@ uvicorn app:app --host 0.0.0.0 --port 8000
 
 `--host 0.0.0.0` listens on all interfaces so other devices on your LAN can reach the API (not just this PC).
 
+Use a **single uvicorn worker** (the default). Live ledgers and the Stockfish pool are in-process memory; `--workers N` would split state across processes.
+
 **This machine**
 
 - Health: `GET http://127.0.0.1:8000/health`
@@ -32,6 +34,21 @@ If another device cannot connect, allow inbound TCP 8000 in Windows Firewall.
 
 `model.version` is `oracle-cpp-v1`. The server prefers the C++ `oracle_predict` binary under `Aniket/model_training/cpp/`; if that binary cannot run on this OS, it loads the same `models/<speed>.txt` files in-process.
 
+### Multi-client / concurrent extensions
+
+Several browsers can hit one API at once:
+
+- Every `POST /predict/live` **must** include `client_id` (the extension mints a persistent UUID in `chrome.storage.local` and injects it from the service worker).
+- Server ledgers are keyed by `{client_id}:{game_id}` so two clients in the same platform game never share spend/eval history.
+- Stockfish runs as a pool sized by `STOCKFISH_POOL_SIZE` (default `min(4, cpu_count)`). Set e.g. `STOCKFISH_POOL_SIZE=2` for a light laptop.
+- Idle ledgers expire after 2 hours.
+
+Extension LAN override (service-worker console):
+
+```js
+chrome.storage.local.set({ backendBase: "http://<LAN-IP>:8000" })
+```
+
 ## Smoke-test client
 
 With the server running in another terminal:
@@ -41,7 +58,7 @@ cd Peter/api
 python test_client.py
 ```
 
-This POSTs `examples.blitz_middlegame.request` from `dummy_predict.json` and prints the JSON response.
+This POSTs a `/predict` sample, then two concurrent `/predict/live` calls with different `client_id`s.
 
 ## Endpoints
 
@@ -50,9 +67,9 @@ This POSTs `examples.blitz_middlegame.request` from `dummy_predict.json` and pri
 | `GET` | `/health` | — | `{ "ok": true }` |
 | `GET` | `/predict/schema` | — | feature keys + live example |
 | `POST` | `/predict` | pre-built feature JSON | response JSON below |
-| `POST` | `/predict/live` | raw scrape (`site`, clocks, fen/moves, …) | same response shape |
+| `POST` | `/predict/live` | raw scrape (`client_id`, `site`, clocks, fen/moves, …) | same response shape |
 
-Live path: extension site adapters POST raw state → `live_features.py` builds the speed + feature vector (python-chess + optional Stockfish via `STOCKFISH_PATH`) → `oracle_predict`.
+Live path: extension site adapters POST raw state (with `client_id`) → `live_features.py` builds the speed + feature vector (python-chess + optional Stockfish via `STOCKFISH_PATH` / `STOCKFISH_POOL_SIZE`) → `oracle_predict`.
 
 **Dev base URL:** `http://127.0.0.1:8000`  
 **Content-Type:** `application/json`
@@ -86,6 +103,7 @@ Live path: extension site adapters POST raw state → `live_features.py` builds 
 {
   "speed": "blitz",
   "game_id": "optional-correlation-id",
+  "client_id": "ext-uuid-when-from-live",
   "predictions": {
     "time_spent_s": 5.4,
     "time_spent_p50_s": 4.0,
@@ -98,6 +116,10 @@ Live path: extension site adapters POST raw state → `live_features.py` builds 
   }
 }
 ```
+
+### Live request extras
+
+`POST /predict/live` requires `client_id` (non-empty string) in addition to the scrape fields (`site`, `color`, clocks, fen/placement/moves, …). Missing `client_id` → `400`.
 
 | Field | Meaning | UI use |
 |---|---|---|

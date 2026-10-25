@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import json
 import sys
+import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import httpx
@@ -157,6 +159,60 @@ def apply_to_ui(response: dict[str, Any]) -> None:
     print(f"  model version:      {response['model']['version']}")
 
 
+def build_live_request(client_id: str, game_id: str = "shared-demo-game") -> dict[str, Any]:
+    """Minimal /predict/live body — same platform game_id, distinct client_id."""
+    return {
+        "client_id": client_id,
+        "site": "chesscom",
+        "game_id": game_id,
+        "color": "white",
+        "base_s": 180,
+        "inc_s": 2,
+        "elo_self": 1510,
+        "clock_self_s": 142.0,
+        "clock_opp_s": 155.0,
+        "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "moves_uci": [],
+        "ply": 1,
+        "debug": True,
+    }
+
+
+def call_predict_live(request_body: dict[str, Any]) -> dict[str, Any]:
+    res = httpx.post(f"{BASE_URL}/predict/live", json=request_body, timeout=30.0)
+    if res.status_code == 400:
+        raise ValueError(f"bad live request: {res.text}")
+    res.raise_for_status()
+    return res.json()
+
+
+def smoke_concurrent_live() -> None:
+    """Two clients, same game_id, concurrent POSTs — both must succeed with echoed client_id."""
+    bodies = [
+        build_live_request(f"smoke-client-{uuid.uuid4()}"),
+        build_live_request(f"smoke-client-{uuid.uuid4()}"),
+    ]
+    print("=== concurrent POST /predict/live (two client_ids, same game_id) ===")
+    results: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(call_predict_live, body) for body in bodies]
+        for fut in as_completed(futures):
+            results.append(fut.result())
+
+    echoed = {r.get("client_id") for r in results}
+    expected = {b["client_id"] for b in bodies}
+    if echoed != expected:
+        raise ValueError(f"client_id mismatch: got {echoed}, expected {expected}")
+    for r in results:
+        preds = r["predictions"]
+        print(
+            f"  client={r.get('client_id')} "
+            f"p_blunder={preds['p_blunder']} "
+            f"think={preds['time_spent_s']}"
+        )
+    print("  concurrent live smoke ok")
+
+
 # ---------------------------------------------------------------------------
 # Smoke test — proves the server accepts the format above
 # ---------------------------------------------------------------------------
@@ -191,6 +247,14 @@ def main() -> int:
     print()
 
     apply_to_ui(response)
+
+    try:
+        print()
+        smoke_concurrent_live()
+    except (httpx.HTTPError, ValueError) as exc:
+        print(f"concurrent live smoke failed: {exc}", file=sys.stderr)
+        return 1
+
     return 0
 
 

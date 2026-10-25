@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import math
 import os
+import queue
 import shutil
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -126,8 +128,9 @@ class EvalSnapshot:
 
 @dataclass
 class GameSession:
-    """Per-game rolling state for spend history and eval/blunder tracking."""
+    """Per-client+game rolling state for spend history and eval/blunder tracking."""
 
+    client_id: str
     game_id: str
     color: Color
     base_s: float
@@ -143,37 +146,87 @@ class GameSession:
     last_ply: int = 0
 
 
+# Ledger maps keyed by "{client_id}:{game_id}" — isolated per extension client.
 _SESSIONS: dict[str, GameSession] = {}
 _PAGE: dict[str, "PageLedger"] = {}
-_ENGINE: chess.engine.SimpleEngine | None = None
+_LAST_SEEN: dict[str, float] = {}
+_KEY_LOCKS: dict[str, threading.Lock] = {}
+_KEY_LOCKS_GUARD = threading.Lock()
+SESSION_TTL_S = 2 * 3600  # drop idle ledgers after 2h
+
+# Stockfish pool — one SimpleEngine per slot; never share an instance across threads.
+_ENGINE_POOL: queue.Queue[chess.engine.SimpleEngine] | None = None
 _ENGINE_PATH: str | None = None
 _ENGINE_MISSING = False  # True only when binary cannot be found / never starts
-_ENGINE_LOCK = threading.Lock()
+_POOL_META_LOCK = threading.Lock()
+_POOL_SIZE = 0
 
 
 def _require_engine_strict() -> bool:
     return os.environ.get("OXTERA_REQUIRE_ENGINE", "").strip().lower() in {"1", "true", "yes"}
 
 
-def _drop_engine() -> None:
-    """Forget a dead engine so the next call can spawn a fresh Stockfish."""
-    global _ENGINE, _ENGINE_PATH
-    eng = _ENGINE
-    _ENGINE = None
-    if eng is not None:
+def _pool_size() -> int:
+    env = os.environ.get("STOCKFISH_POOL_SIZE", "").strip()
+    if env:
         try:
-            eng.quit()
+            return max(1, int(env))
+        except ValueError:
+            pass
+    return max(1, min(4, os.cpu_count() or 2))
+
+
+def _ledger_key(raw: dict[str, Any]) -> str:
+    client_id = str(raw.get("client_id") or "").strip()
+    if not client_id:
+        raise LiveFeatureError("client_id is required")
+    game_id = str(raw.get("game_id") or "unknown")
+    return f"{client_id}:{game_id}"
+
+
+def _lock_for(key: str) -> threading.Lock:
+    with _KEY_LOCKS_GUARD:
+        lock = _KEY_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _KEY_LOCKS[key] = lock
+        return lock
+
+
+def _evict_stale_locked(*, except_key: str | None = None) -> None:
+    """Drop idle ledgers (keep except_key). Locks are left in place; clear_sessions wipes them."""
+    now = time.monotonic()
+    stale = [
+        k
+        for k, seen in _LAST_SEEN.items()
+        if now - seen > SESSION_TTL_S and k != except_key
+    ]
+    for key in stale:
+        _SESSIONS.pop(key, None)
+        _PAGE.pop(key, None)
+        _LAST_SEEN.pop(key, None)
+
+
+def _touch(key: str) -> None:
+    _LAST_SEEN[key] = time.monotonic()
+    _evict_stale_locked(except_key=key)
+
+
+def _quit_engine(eng: chess.engine.SimpleEngine | None) -> None:
+    if eng is None:
+        return
+    try:
+        eng.quit()
+    except Exception:  # noqa: BLE001
+        try:
+            eng.close()
         except Exception:  # noqa: BLE001
-            try:
-                eng.close()
-            except Exception:  # noqa: BLE001
-                pass
+            pass
 
 
-def _get_engine() -> chess.engine.SimpleEngine | None:
-    global _ENGINE, _ENGINE_PATH, _ENGINE_MISSING
-    if _ENGINE is not None:
-        return _ENGINE
+def _spawn_engine() -> chess.engine.SimpleEngine | None:
+    """Start one Stockfish process, or mark missing / raise when strict."""
+    global _ENGINE_PATH, _ENGINE_MISSING
     if _ENGINE_MISSING:
         return None
     path = find_stockfish()
@@ -185,14 +238,74 @@ def _get_engine() -> chess.engine.SimpleEngine | None:
             )
         return None
     try:
-        _ENGINE = chess.engine.SimpleEngine.popen_uci(path)
+        eng = chess.engine.SimpleEngine.popen_uci(path)
         _ENGINE_PATH = path
-        return _ENGINE
+        return eng
     except Exception as exc:  # noqa: BLE001
-        _ENGINE = None
         if _require_engine_strict():
             raise EngineUnavailableError(f"failed to start Stockfish at {path}: {exc}") from exc
         return None
+
+
+def _ensure_pool() -> queue.Queue[chess.engine.SimpleEngine] | None:
+    """Lazily create the pool. Returns None when Stockfish is unavailable."""
+    global _ENGINE_POOL, _POOL_SIZE, _ENGINE_MISSING
+    with _POOL_META_LOCK:
+        if _ENGINE_POOL is not None:
+            return _ENGINE_POOL
+        if _ENGINE_MISSING:
+            return None
+        size = _pool_size()
+        pool: queue.Queue[chess.engine.SimpleEngine] = queue.Queue(maxsize=size)
+        spawned = 0
+        for _ in range(size):
+            eng = _spawn_engine()
+            if eng is None:
+                break
+            pool.put(eng)
+            spawned += 1
+        if spawned == 0:
+            return None
+        _POOL_SIZE = spawned
+        _ENGINE_POOL = pool
+        return _ENGINE_POOL
+
+
+def _engine_ready() -> bool:
+    """True if the pool was started with at least one Stockfish process."""
+    if _ENGINE_MISSING:
+        return False
+    pool = _ensure_pool()
+    return pool is not None and _POOL_SIZE > 0
+
+
+def _checkout_engine(timeout: float = 30.0) -> chess.engine.SimpleEngine | None:
+    pool = _ensure_pool()
+    if pool is None:
+        return None
+    try:
+        return pool.get(timeout=timeout)
+    except queue.Empty:
+        return None
+
+
+def _checkin_engine(eng: chess.engine.SimpleEngine) -> None:
+    pool = _ENGINE_POOL
+    if pool is None:
+        _quit_engine(eng)
+        return
+    try:
+        pool.put_nowait(eng)
+    except queue.Full:
+        _quit_engine(eng)
+
+
+def _replace_dead_engine(dead: chess.engine.SimpleEngine | None) -> None:
+    """Quit a dead engine and try to put a fresh one back into the pool."""
+    _quit_engine(dead)
+    replacement = _spawn_engine()
+    if replacement is not None:
+        _checkin_engine(replacement)
 
 
 def evaluate_board(
@@ -205,25 +318,27 @@ def evaluate_board(
     else:
         limit = chess.engine.Limit(time=0.02 if movetime is None else movetime)
 
-    with _ENGINE_LOCK:
-        for attempt in range(2):
-            engine = _get_engine()
-            if engine is None:
-                return EvalSnapshot()
-            try:
-                info = engine.analyse(board, limit)
-                score = info["score"].white()
-                if score.is_mate():
-                    return EvalSnapshot(cp=None, mate=score.mate())
-                return EvalSnapshot(cp=float(score.score(mate_score=CP_CAP)), mate=None)
-            except (chess.engine.EngineTerminatedError, chess.engine.EngineError, OSError) as exc:
-                # Process died mid-game under load — drop and respawn once.
-                _drop_engine()
-                if attempt == 0:
-                    continue
-                if _require_engine_strict():
-                    raise EngineUnavailableError(f"Stockfish died: {exc}") from exc
-                return EvalSnapshot()
+    for attempt in range(2):
+        engine = _checkout_engine()
+        if engine is None:
+            return EvalSnapshot()
+        try:
+            info = engine.analyse(board, limit)
+            score = info["score"].white()
+            if score.is_mate():
+                snap = EvalSnapshot(cp=None, mate=score.mate())
+            else:
+                snap = EvalSnapshot(cp=float(score.score(mate_score=CP_CAP)), mate=None)
+            _checkin_engine(engine)
+            return snap
+        except (chess.engine.EngineTerminatedError, chess.engine.EngineError, OSError) as exc:
+            # Process died mid-game under load — drop and respawn once.
+            _replace_dead_engine(engine)
+            if attempt == 0:
+                continue
+            if _require_engine_strict():
+                raise EngineUnavailableError(f"Stockfish died: {exc}") from exc
+            return EvalSnapshot()
     return EvalSnapshot()
 
 
@@ -270,15 +385,22 @@ def _board_from_state(raw: dict[str, Any]) -> tuple[chess.Board, bool]:
     return board, True
 
 
-def _session_for(raw: dict[str, Any]) -> GameSession:
+def _session_for(raw: dict[str, Any], key: str) -> GameSession:
+    client_id = str(raw.get("client_id") or "").strip()
     game_id = str(raw.get("game_id") or "unknown")
     color: Color = "black" if str(raw.get("color", "white")).lower().startswith("b") else "white"
     base_s = float(raw["base_s"])
     inc_s = float(raw["inc_s"])
-    sess = _SESSIONS.get(game_id)
-    if sess is None or sess.color != color or sess.base_s != base_s:
-        sess = GameSession(game_id=game_id, color=color, base_s=base_s, inc_s=inc_s)
-        _SESSIONS[game_id] = sess
+    sess = _SESSIONS.get(key)
+    if sess is None or sess.color != color or sess.base_s != base_s or sess.client_id != client_id:
+        sess = GameSession(
+            client_id=client_id,
+            game_id=game_id,
+            color=color,
+            base_s=base_s,
+            inc_s=inc_s,
+        )
+        _SESSIONS[key] = sess
     return sess
 
 
@@ -312,8 +434,9 @@ def _think_seconds(clk_before: float | None, clk_after: float | None, inc: float
 
 @dataclass
 class PageLedger:
-    """One live game. Clocks and evals are kept so the next turn does not recompute them."""
+    """One live game per client. Clocks and evals are kept so the next turn does not recompute them."""
 
+    client_id: str
     game_id: str
     human: Color
     base_s: float
@@ -331,15 +454,28 @@ class PageLedger:
     html_clocks: list[float | None] = field(default_factory=list)
 
 
-def _page_ledger(raw: dict[str, Any]) -> PageLedger:
+def _page_ledger(raw: dict[str, Any], key: str) -> PageLedger:
+    client_id = str(raw.get("client_id") or "").strip()
     game_id = str(raw.get("game_id") or "unknown")
     human: Color = "black" if str(raw.get("color", "white")).lower().startswith("b") else "white"
     base_s = float(raw["base_s"])
     inc_s = float(raw["inc_s"])
-    ledger = _PAGE.get(game_id)
-    if ledger is None or ledger.human != human or ledger.base_s != base_s or ledger.inc_s != inc_s:
-        ledger = PageLedger(game_id=game_id, human=human, base_s=base_s, inc_s=inc_s)
-        _PAGE[game_id] = ledger
+    ledger = _PAGE.get(key)
+    if (
+        ledger is None
+        or ledger.human != human
+        or ledger.base_s != base_s
+        or ledger.inc_s != inc_s
+        or ledger.client_id != client_id
+    ):
+        ledger = PageLedger(
+            client_id=client_id,
+            game_id=game_id,
+            human=human,
+            base_s=base_s,
+            inc_s=inc_s,
+        )
+        _PAGE[key] = ledger
     return ledger
 
 
@@ -481,20 +617,21 @@ def _search_position(board: chess.Board, *, engine_depth: int | None, movetime: 
 
 def _build_from_placement(
     raw: dict[str, Any],
+    key: str,
     *,
     engine_depth: int | None,
     movetime: float | None,
 ) -> tuple[str, dict[str, float], bool]:
     """Lichess path: replay the move list, keep it only if it matches the piece picture."""
     required = ("base_s", "inc_s", "clock_self_s", "clock_opp_s", "elo_self", "color", "placement")
-    missing = [key for key in required if raw.get(key) is None]
+    missing = [field for field in required if raw.get(field) is None]
     if missing:
         raise LiveFeatureError(f"missing required fields: {missing}")
 
     base_s = float(raw["base_s"])
     inc_s = float(raw["inc_s"])
     speed = model_speed_or_raise(base_s, inc_s)
-    ledger = _page_ledger(raw)
+    ledger = _page_ledger(raw, key)
     white_clk, black_clk = _absolute_clocks(raw, ledger.human)
     sans = [str(san).strip() for san in (raw.get("moves_san") or []) if str(san).strip()]
     # Berserk is "the clock at move 1 is under 90% of the base". A later clock is not that.
@@ -559,7 +696,7 @@ def _build_from_placement(
     engine_used = False
     if ply > 1 and movetime != 0:
         snap = _search_position(ledger.board, engine_depth=engine_depth, movetime=movetime)
-        engine_used = snap.cp is not None or snap.mate is not None or _ENGINE is not None
+        engine_used = snap.cp is not None or snap.mate is not None or _engine_ready()
         if snap.cp is not None or snap.mate is not None:
             _nan_pad(ledger.wp_white, ply - 1)
             _nan_pad(ledger.cp_white, ply - 1)
@@ -583,7 +720,7 @@ def _build_from_placement(
                 ledger.drop[finished] = swing
                 last_swing = swing
     elif ply == 1 and movetime != 0:
-        engine_used = find_stockfish() is not None and not _ENGINE_MISSING
+        engine_used = _engine_ready()
 
     pos = position_features(ledger.board)
     features: dict[str, float] = {
@@ -610,15 +747,13 @@ def _build_from_placement(
     return speed, {key: features[key] for key in FEATURE_KEYS_BY_SPEED[speed]}, engine_used
 
 
-def build_features(
+def _build_fen_path(
     raw: dict[str, Any],
+    key: str,
     *,
-    engine_depth: int | None = None,
-    movetime: float | None = None,
+    engine_depth: int | None,
+    movetime: float | None,
 ) -> tuple[str, dict[str, float], bool]:
-    """Return (model_speed, feature_dict, engine_used)."""
-    if raw.get("placement"):
-        return _build_from_placement(raw, engine_depth=engine_depth, movetime=movetime)
     if engine_depth is None:
         engine_depth = 12
     required = ("base_s", "inc_s", "clock_self_s", "clock_opp_s", "elo_self", "color")
@@ -653,7 +788,7 @@ def build_features(
         # Still compute features for the position on the board; colour is for spend/eval POV.
         pass
 
-    sess = _session_for(raw)
+    sess = _session_for(raw, key)
 
     # Prefer explicit spend fields from the extension when present.
     if raw.get("prev_self_spent") is not None:
@@ -681,7 +816,7 @@ def build_features(
 
     # Engine features: eval of the position we are facing (= after opponent's last move).
     snap = evaluate_board(board, depth=engine_depth)
-    engine_used = snap.cp is not None or snap.mate is not None or _ENGINE is not None
+    engine_used = snap.cp is not None or snap.mate is not None or _engine_ready()
 
     if snap.cp is None and snap.mate is None:
         wp_self = math.nan
@@ -752,18 +887,52 @@ def build_features(
     return speed, {k: features[k] for k in keys}, engine_used
 
 
+def build_features(
+    raw: dict[str, Any],
+    *,
+    engine_depth: int | None = None,
+    movetime: float | None = None,
+) -> tuple[str, dict[str, float], bool]:
+    """Return (model_speed, feature_dict, engine_used).
+
+    Ledgers are partitioned by client_id + game_id and locked per key so concurrent
+    clients do not corrupt each other's spend / eval history.
+    """
+    key = _ledger_key(raw)
+    with _lock_for(key):
+        _touch(key)
+        if raw.get("placement"):
+            return _build_from_placement(
+                raw, key, engine_depth=engine_depth, movetime=movetime
+            )
+        return _build_fen_path(raw, key, engine_depth=engine_depth, movetime=movetime)
+
+
 def clear_sessions() -> None:
     _SESSIONS.clear()
     _PAGE.clear()
+    _LAST_SEEN.clear()
+    with _KEY_LOCKS_GUARD:
+        _KEY_LOCKS.clear()
 
 
 def warm_engine() -> None:
-    """Start Stockfish once, so the first move does not pay for process startup."""
-    _get_engine()
+    """Pre-fill the Stockfish pool so the first move does not pay for process startup."""
+    _ensure_pool()
 
 
 def shutdown_engine() -> None:
-    global _ENGINE, _ENGINE_PATH, _ENGINE_MISSING
-    _drop_engine()
-    _ENGINE_PATH = None
-    # Do not set _ENGINE_MISSING — allow a later warm/predict to find Stockfish again.
+    global _ENGINE_POOL, _ENGINE_PATH, _POOL_SIZE
+    with _POOL_META_LOCK:
+        pool = _ENGINE_POOL
+        _ENGINE_POOL = None
+        _POOL_SIZE = 0
+        _ENGINE_PATH = None
+        # Do not set _ENGINE_MISSING — allow a later warm/predict to find Stockfish again.
+    if pool is not None:
+        while True:
+            try:
+                eng = pool.get_nowait()
+            except queue.Empty:
+                break
+            _quit_engine(eng)

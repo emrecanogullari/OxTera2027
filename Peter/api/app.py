@@ -59,6 +59,8 @@ class PredictRequest(BaseModel):
 class LivePredictRequest(BaseModel):
     """Raw board/clock scrape from a site adapter (chess.com / Lichess)."""
 
+    # Extension UUID — partitions server ledgers so concurrent clients never share state.
+    client_id: str = Field(min_length=1)
     site: Literal["chesscom", "lichess"] = "chesscom"
     game_id: str | None = None
     color: Literal["white", "black"]
@@ -86,6 +88,15 @@ class LivePredictRequest(BaseModel):
     # When true, response includes raw input + derived feature vector (for HUD console).
     debug: bool = True
 
+    @field_validator("client_id", mode="before")
+    @classmethod
+    def _require_client_id(cls, value: Any) -> Any:
+        if value is None or (isinstance(value, str) and not value.strip()):
+            raise ValueError("client_id is required")
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
 
 class Predictions(BaseModel):
     time_spent_s: float
@@ -102,6 +113,7 @@ class ModelInfo(BaseModel):
 class LiveDebugInfo(BaseModel):
     engine_used: bool
     speed: Speed
+    client_id: str | None = None
     raw: dict[str, Any]
     features: dict[str, Any]
     note: str | None = None
@@ -110,6 +122,7 @@ class LiveDebugInfo(BaseModel):
 class PredictResponse(BaseModel):
     speed: Speed
     game_id: str | None = None
+    client_id: str | None = None
     predictions: Predictions
     model: ModelInfo
     debug: LiveDebugInfo | None = None
@@ -169,6 +182,7 @@ def _run_oracle(
     game_id: str | None,
     prepared: dict[str, float],
     *,
+    client_id: str | None = None,
     version_suffix: str = "",
     debug: LiveDebugInfo | None = None,
 ) -> PredictResponse:
@@ -182,6 +196,7 @@ def _run_oracle(
     return PredictResponse(
         speed=speed,
         game_id=game_id,
+        client_id=client_id,
         predictions=Predictions(
             time_spent_s=out.think_median,
             time_spent_p50_s=out.think_median,
@@ -222,6 +237,7 @@ def predict_schema() -> dict[str, Any]:
             "features": {k: 0.0 for k in FEATURE_KEYS_BY_SPEED["blitz"]},
         },
         "live_example": {
+            "client_id": "ext-uuid-required",
             "site": "chesscom",
             "game_id": "optional-id",
             "color": "white",
@@ -248,7 +264,8 @@ def predict_live(body: LivePredictRequest) -> PredictResponse:
     raw = body.model_dump()
     debug_flag = bool(raw.pop("debug", True))
     logger.info(
-        "predict/live raw site=%s game_id=%s color=%s ply=%s clocks=%s/%s tc=%s+%s fen=%s moves=%d",
+        "predict/live raw client_id=%s site=%s game_id=%s color=%s ply=%s clocks=%s/%s tc=%s+%s fen=%s moves=%d",
+        raw.get("client_id"),
         raw.get("site"),
         raw.get("game_id"),
         raw.get("color"),
@@ -289,6 +306,7 @@ def predict_live(body: LivePredictRequest) -> PredictResponse:
         debug_info = LiveDebugInfo(
             engine_used=engine_used,
             speed=speed,  # type: ignore[arg-type]
+            client_id=body.client_id,
             raw={k: v for k, v in raw.items() if k != "debug"},
             features=feats_json,
             note=note,
@@ -299,6 +317,7 @@ def predict_live(body: LivePredictRequest) -> PredictResponse:
         speed,  # type: ignore[arg-type]
         body.game_id,
         features,
+        client_id=body.client_id,
         version_suffix=suffix,
         debug=debug_info,
     )

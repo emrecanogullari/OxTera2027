@@ -37,6 +37,7 @@ def test_build_starting_position_blitz() -> None:
     clear_sessions()
     speed, feats, _engine = build_features(
         {
+            "client_id": "test-client-a",
             "site": "chesscom",
             "game_id": "t1",
             "color": "white",
@@ -70,6 +71,7 @@ def test_moves_san_checked_against_pieces() -> None:
     clear_sessions()
     speed, feats, _ = build_features(
         {
+            "client_id": "test-client-a",
             "site": "chesscom",
             "game_id": "t3",
             "color": "white",
@@ -95,6 +97,7 @@ def test_piece_placement_wins_when_move_list_disagrees() -> None:
     clear_sessions()
     _speed, feats, _ = build_features(
         {
+            "client_id": "test-client-a",
             "site": "lichess",
             "game_id": "t4",
             "color": "white",
@@ -115,9 +118,20 @@ def test_piece_placement_wins_when_move_list_disagrees() -> None:
     assert feats["n_captures"] == 0
 
 
-def _live(game_id: str, color: str, side: str, white_clk: float, black_clk: float, sans: list[str], placement: str):
+def _live(
+    game_id: str,
+    color: str,
+    side: str,
+    white_clk: float,
+    black_clk: float,
+    sans: list[str],
+    placement: str,
+    *,
+    client_id: str = "test-client-a",
+):
     bottom, top = (white_clk, black_clk) if color == "white" else (black_clk, white_clk)
     return {
+        "client_id": client_id,
         "site": "lichess",
         "game_id": game_id,
         "color": color,
@@ -233,6 +247,7 @@ def test_build_after_e4() -> None:
     clear_sessions()
     speed, feats, _ = build_features(
         {
+            "client_id": "test-client-a",
             "site": "lichess",
             "game_id": "t2",
             "color": "black",
@@ -252,6 +267,55 @@ def test_build_after_e4() -> None:
     assert feats["n_legal"] == 20
 
 
+def test_client_id_isolates_same_game_id() -> None:
+    """Two clients sharing a platform game_id must not share spend ledgers."""
+    clear_sessions()
+    board = chess.Board()
+    start = board.board_fen()
+    board.push_san("e4")
+    after_e4 = board.board_fen()
+
+    build_features(
+        _live("shared-game", "white", "white", 180, 180, [], start, client_id="client-a"),
+        movetime=0,
+    )
+    build_features(
+        _live("shared-game", "white", "black", 170, 180, ["e4"], after_e4, client_id="client-a"),
+        movetime=0,
+    )
+    # Client B starts fresh on the same game_id — no spend history from A.
+    _speed, feats_b, _ = build_features(
+        _live("shared-game", "white", "black", 170, 180, ["e4"], after_e4, client_id="client-b"),
+        movetime=0,
+    )
+    assert math.isnan(feats_b["prev_opp_spent"])
+    assert "client-a:shared-game" in live_features._PAGE
+    assert "client-b:shared-game" in live_features._PAGE
+
+
+def test_missing_client_id_rejected() -> None:
+    clear_sessions()
+    try:
+        build_features(
+            {
+                "site": "chesscom",
+                "game_id": "t-missing",
+                "color": "white",
+                "base_s": 180,
+                "inc_s": 0,
+                "elo_self": 1500,
+                "clock_self_s": 180,
+                "clock_opp_s": 180,
+                "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                "ply": 1,
+            },
+            movetime=0,
+        )
+        raise AssertionError("expected LiveFeatureError for missing client_id")
+    except LiveFeatureError as exc:
+        assert "client_id" in str(exc)
+
+
 if __name__ == "__main__":
     test_speed_of_buckets()
     test_model_speed_rejects_rapid()
@@ -262,5 +326,7 @@ if __name__ == "__main__":
     test_lichess_clocks_follow_training_rules()
     test_printed_move_clock_must_match_the_board_clock()
     test_build_after_e4()
+    test_client_id_isolates_same_game_id()
+    test_missing_client_id_rejected()
     shutdown_engine()
     print("ok")
