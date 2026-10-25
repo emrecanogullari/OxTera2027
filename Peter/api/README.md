@@ -1,9 +1,47 @@
 # Predict API (frontend contract)
 
-The extension / frontend talks to the model over **JSON** via `POST /predict`.  
-Until the real FastAPI service is up, use [`dummy_predict.json`](dummy_predict.json) as the contract and mock responses.
+The extension / frontend talks to the model over **JSON** via `POST /predict`.
+
+**MVP server:** FastAPI on localhost returns **random** predictions in the correct shape so the frontend can integrate before real models exist. Field names match [`dummy_predict.json`](dummy_predict.json).
 
 Feature names and units come from [`Aniket/FEATURE_SET.md`](../../Aniket/FEATURE_SET.md).
+
+## Run the MVP server
+
+```bash
+cd Peter/api
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+`--host 0.0.0.0` listens on all interfaces so other devices on your LAN can reach the API (not just this PC).
+
+**This machine**
+
+- Health: `GET http://127.0.0.1:8000/health`
+- Predict: `POST http://127.0.0.1:8000/predict`
+- Docs: `http://127.0.0.1:8000/docs`
+
+**Other devices on the same Wi‑Fi** — use this PC’s LAN IP (find with `ipconfig` → IPv4 on Wi‑Fi):
+
+- Health: `GET http://<LAN-IP>:8000/health`
+- Predict: `POST http://<LAN-IP>:8000/predict`
+- Docs: `http://<LAN-IP>:8000/docs`
+
+If another device cannot connect, allow inbound TCP 8000 in Windows Firewall.
+
+Predictions are random (`model.version` is `random-mvp-v0`). Swap in a real model later without changing response field names.
+
+## Smoke-test client
+
+With the server running in another terminal:
+
+```bash
+cd Peter/api
+python test_client.py
+```
+
+This POSTs `examples.blitz_middlegame.request` from `dummy_predict.json` and prints the JSON response.
 
 ## Endpoints
 
@@ -51,7 +89,7 @@ Feature names and units come from [`Aniket/FEATURE_SET.md`](../../Aniket/FEATURE
     "p_blunder": 0.12
   },
   "model": {
-    "version": "dummy-v0",
+    "version": "random-mvp-v0",
     "targets": ["time_spent", "blunder"]
   }
 }
@@ -64,14 +102,12 @@ Feature names and units come from [`Aniket/FEATURE_SET.md`](../../Aniket/FEATURE
 | `time_spent_p75_s` | Upper typical / nudge budget (s) | When elapsed exceeds this → nudge |
 | `p_blunder` | P(this move loses ≥ 20 win%) | Blunder chance meter (0–1) |
 
-Field names are stable: swap dummy → live model without changing the frontend parser.
-
-## Using the dummy file
+## Using the dummy file (offline mock)
 
 1. Open [`dummy_predict.json`](dummy_predict.json).
 2. Pick an entry under `examples` (e.g. `blitz_middlegame`).
 3. Treat `request` as what you would `POST`, and `response` as what you render.
-4. For local mocks: hardcode or import that `response` object; or stub `fetch` to return it when `POST /predict` is called.
+4. Or call the live MVP server instead of hardcoding `response`.
 
 ### Example scenarios in the fixture
 
@@ -94,9 +130,7 @@ const data = await res.json();
 // data.predictions.p_blunder, data.predictions.time_spent_p75_s, ...
 ```
 
-Until the server exists, skip the network call and use `example.response` directly.
-
-## Errors (planned)
+## Errors
 
 | Status | When | Frontend |
 |---|---|---|
