@@ -1,4 +1,4 @@
-/** HUD: edge risk glow + robot helper panel. No site DOM selectors. */
+/** HUD: edge risk glow + BlunderBot helper panel. No site DOM selectors. */
 (function (root) {
   const Ox = (root.OxTeraCoach = root.OxTeraCoach || {});
 
@@ -19,6 +19,8 @@
       <rect x="24.5" y="15" width="3.5" height="6" rx="1.5" fill="#9aa4a8"/>
     </svg>
   `;
+
+  let thinkWatch = null;
 
   function ensureEdgeGlow() {
     let el = document.getElementById("oxtera-edge-glow");
@@ -44,13 +46,78 @@
       return;
     }
     const t = Math.min(1, Math.max(0, p / BLUNDER_RED_CAP));
-    // Ease slightly so low risk stays subtle, then climbs toward the cap.
     const eased = t * t * (3 - 2 * t);
     const alpha = (0.12 + eased * 0.72).toFixed(3);
     const glow = (eased * 0.85).toFixed(3);
     el.style.setProperty("--oxtera-red-a", alpha);
     el.style.setProperty("--oxtera-red-glow", glow);
     el.classList.add("oxtera-active");
+  };
+
+  Ox.clearRobotNotify = function clearRobotNotify() {
+    const toggle = document.getElementById("oxtera-robot-toggle");
+    if (toggle) toggle.classList.remove("oxtera-alert");
+  };
+
+  /** Yellow pulse on the robot icon only — no floating text. */
+  Ox.alertRobot = function alertRobot() {
+    const toggle = document.getElementById("oxtera-robot-toggle");
+    if (toggle) toggle.classList.add("oxtera-alert");
+  };
+
+  Ox.stopThinkWatch = function stopThinkWatch() {
+    if (thinkWatch && thinkWatch.timer) window.clearInterval(thinkWatch.timer);
+    thinkWatch = null;
+    const flag = document.getElementById("oxtera-overthink-flag");
+    if (flag) {
+      flag.hidden = true;
+      flag.textContent = "";
+    }
+  };
+
+  /**
+   * Warn when wall-clock think time exceeds predicted top quartile (p75).
+   * Icon flashes yellow; detail text lives only inside the side panel.
+   * @param {{ p75_s?: number, turnKey?: string }} opts
+   */
+  Ox.startThinkWatch = function startThinkWatch(opts) {
+    Ox.stopThinkWatch();
+    const p75 = Number(opts && opts.p75_s);
+    if (!Number.isFinite(p75) || p75 <= 0) return;
+    const turnKey = (opts && opts.turnKey) || "";
+    const startedAt = Date.now();
+    let fired = false;
+    thinkWatch = {
+      turnKey,
+      p75,
+      timer: window.setInterval(() => {
+        if (!thinkWatch || thinkWatch.turnKey !== turnKey) return;
+        const elapsed = (Date.now() - startedAt) / 1000;
+        if (!fired && elapsed > p75) {
+          fired = true;
+          const secs = Math.round(p75);
+          Ox.alertRobot();
+          const flag = document.getElementById("oxtera-overthink-flag");
+          if (flag) {
+            flag.hidden = false;
+            flag.textContent = `THINK > P75 (${secs}s)`;
+          }
+          Ox.setHudStatus("overthink — past top quartile");
+        }
+      }, 400),
+    };
+  };
+
+  Ox.setRobotOpen = function setRobotOpen(open) {
+    const root = document.getElementById("oxtera-robot-root");
+    const toggle = document.getElementById("oxtera-robot-toggle");
+    const panel = document.getElementById("oxtera-robot-panel");
+    if (!root || !toggle || !panel) return;
+    root.classList.toggle("oxtera-open", open);
+    toggle.classList.toggle("oxtera-open", open);
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.setAttribute("aria-label", open ? "Close BlunderBot" : "Open BlunderBot");
+    panel.setAttribute("aria-hidden", open ? "false" : "true");
   };
 
   Ox.injectHud = function injectHud() {
@@ -61,16 +128,18 @@
     root.id = "oxtera-robot-root";
     root.innerHTML = `
       <aside id="oxtera-robot-panel" role="dialog" aria-label="BlunderBot coach" aria-hidden="true">
-        <div class="oxtera-panel-title">BlunderBot</div>
+        <div class="oxtera-panel-title">BLUNDER BOT</div>
         <div id="hud-status" class="oxtera-panel-status">booting…</div>
+        <div id="oxtera-overthink-flag" class="oxtera-overthink-flag" hidden></div>
         <div class="oxtera-metric">
-          <div class="oxtera-metric-label">Predicted think time</div>
+          <div class="oxtera-metric-label">THINK_TIME</div>
           <div id="hud-thinking-time" class="oxtera-metric-value think">-- s</div>
         </div>
         <div class="oxtera-metric">
-          <div class="oxtera-metric-label">Blunder chance</div>
+          <div class="oxtera-metric-label">BLUNDER_CHANCE</div>
           <div id="hud-blunder-risk" class="oxtera-metric-value blunder">-- %</div>
         </div>
+        <div id="oxtera-watch-slot" class="oxtera-watch-slot" hidden></div>
       </aside>
       <button
         type="button"
@@ -84,15 +153,10 @@
     document.body.appendChild(root);
 
     const toggle = document.getElementById("oxtera-robot-toggle");
-    const panel = document.getElementById("oxtera-robot-panel");
     toggle.addEventListener("click", (e) => {
       e.stopPropagation();
       const open = !root.classList.contains("oxtera-open");
-      root.classList.toggle("oxtera-open", open);
-      toggle.classList.toggle("oxtera-open", open);
-      toggle.setAttribute("aria-expanded", open ? "true" : "false");
-      toggle.setAttribute("aria-label", open ? "Close BlunderBot" : "Open BlunderBot");
-      panel.setAttribute("aria-hidden", open ? "false" : "true");
+      Ox.setRobotOpen(open);
     });
   };
 
@@ -102,7 +166,16 @@
   };
 
   /**
-   * @param {{ predictions?: { time_spent_s?: number, p_blunder?: number } }} data
+   * Host for White/Black picker when scoring someone else's game.
+   * @returns {HTMLElement|null}
+   */
+  Ox.getWatchSlot = function getWatchSlot() {
+    Ox.injectHud();
+    return document.getElementById("oxtera-watch-slot");
+  };
+
+  /**
+   * @param {{ predictions?: { time_spent_s?: number, time_spent_p75_s?: number, p_blunder?: number }, turnKey?: string }} data
    */
   Ox.applyPredictions = function applyPredictions(data) {
     const preds = data && data.predictions;
@@ -117,6 +190,9 @@
       if (riskElem) riskElem.textContent = `${pct}%`;
       Ox.setBlunderEdgeGlow(preds.p_blunder);
     }
+    Ox.clearRobotNotify();
+    const p75 = preds.time_spent_p75_s;
+    Ox.startThinkWatch({ p75_s: p75, turnKey: data.turnKey || "" });
     Ox.setHudStatus("live");
   };
 })(typeof globalThis !== "undefined" ? globalThis : window);

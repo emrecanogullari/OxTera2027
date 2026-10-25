@@ -69,9 +69,12 @@
       // Prefetch on opponent's turn; only paint HUD when it is our move.
       if (payload.ply != null && sideToMove !== payload.color) {
         console.log("[OxTera] opponent to move — prediction fetched, HUD not updated");
+        if (typeof Ox.stopThinkWatch === "function") Ox.stopThinkWatch();
+        if (typeof Ox.clearRobotNotify === "function") Ox.clearRobotNotify();
+        if (typeof Ox.setBlunderEdgeGlow === "function") Ox.setBlunderEdgeGlow(0);
         return;
       }
-      Ox.applyPredictions(data);
+      Ox.applyPredictions(Object.assign({}, data, { turnKey }));
     } catch (err) {
       console.error("[OxTera] predict/live failed", err);
     } finally {

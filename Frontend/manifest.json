@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Chess Coaching HUD",
-  "version": "1.4.0",
+  "name": "BlunderBot",
+  "version": "1.5.0",
   "description": "Live think-time / blunder-risk HUD for chess.com and Lichess via the OxTera predict API.",
   "permissions": ["activeTab", "scripting", "storage"],
   "background": {

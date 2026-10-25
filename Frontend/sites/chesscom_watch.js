@@ -74,12 +74,25 @@
     return names;
   }
 
-  /** True only when the logged-in name is present and is neither player. */
+  function isGamePage() {
+    const path = location.pathname || "";
+    return (
+      /\/(?:game|play)\/(?:live\/)?\d+/i.test(path) ||
+      /\/analysis\//i.test(path) ||
+      /\/live\/?#?/i.test(path)
+    );
+  }
+
+  /**
+   * Watch / replay mode: score White or Black via the picker.
+   * True when you are not seated as either player, or when the logged-in
+   * name cannot be read on a game/analysis page (common on replays).
+   */
   function isSomeoneElsesGame() {
-    const me = headerUsername();
-    if (!me) return false;
     const names = playerNames();
-    if (names.length < 2) return false;
+    if (names.length < 2 || !isGamePage()) return false;
+    const me = headerUsername();
+    if (!me) return true;
     return !names.some((name) => sameName(name, me));
   }
 
@@ -160,33 +173,40 @@
     const bar = document.getElementById("ox-watch-colors");
     if (!bar) return;
     for (const btn of bar.querySelectorAll("button")) {
-      const on = btn.dataset.color === active;
-      btn.style.outline = on ? "2px solid #4cd964" : "none";
-      btn.style.background = btn.dataset.color === "white" ? "#f4f4f5" : "#1c1c1e";
-      btn.style.color = btn.dataset.color === "white" ? "#1c1c1e" : "#f4f4f5";
+      btn.classList.toggle("oxtera-active", btn.dataset.color === active);
     }
   }
 
   function removePicker() {
+    const slot = document.getElementById("oxtera-watch-slot");
+    if (slot) {
+      slot.hidden = true;
+      slot.innerHTML = "";
+    }
     const bar = document.getElementById("ox-watch-colors");
     if (bar) bar.remove();
   }
 
   function showPicker(active) {
-    const hud = document.getElementById("chess-coach-hud");
-    if (!hud) return;
+    const slot =
+      (typeof Ox.getWatchSlot === "function" && Ox.getWatchSlot()) ||
+      document.getElementById("oxtera-watch-slot");
+    if (!slot) return;
+    slot.hidden = false;
     let bar = document.getElementById("ox-watch-colors");
     if (!bar) {
+      slot.innerHTML = "";
+      const label = document.createElement("div");
+      label.className = "oxtera-watch-label";
+      label.textContent = "SCORE_AS";
+      slot.appendChild(label);
       bar = document.createElement("div");
       bar.id = "ox-watch-colors";
-      bar.style.cssText = "display:flex;gap:8px;margin-top:10px;";
       for (const color of ["white", "black"]) {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.dataset.color = color;
         btn.textContent = color === "white" ? "White" : "Black";
-        btn.style.cssText =
-          "flex:1;cursor:pointer;border:none;border-radius:8px;padding:6px 0;font-weight:600;";
         btn.addEventListener("pointerdown", (event) => {
           event.stopPropagation();
         });
@@ -199,7 +219,8 @@
         });
         bar.appendChild(btn);
       }
-      hud.appendChild(bar);
+      slot.appendChild(bar);
+      if (typeof Ox.setRobotOpen === "function") Ox.setRobotOpen(true);
     }
     paintButtons(active);
   }

@@ -1,4 +1,15 @@
-/* --- OxTera / BlunderBot overlay --- */
+/* --- BlunderBot overlay (navy + teal CRT aesthetic) --- */
+
+:root {
+  --oxtera-navy: #0a1e33;
+  --oxtera-navy-deep: #061525;
+  --oxtera-teal: #7eb8bc;
+  --oxtera-teal-dim: #5a9398;
+  --oxtera-teal-bright: #a8d5d8;
+  --oxtera-ink: #c5e4e6;
+  --oxtera-warn: #e8a04a;
+  --oxtera-danger: #e85a5a;
+}
 
 #oxtera-edge-glow {
   position: fixed;
@@ -53,7 +64,7 @@
   z-index: 999999;
   transform: translateY(-50%);
   font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-  color: #f2efe8;
+  color: var(--oxtera-ink);
   pointer-events: none;
 }
 
@@ -95,7 +106,7 @@
 }
 
 #oxtera-robot-toggle:focus-visible {
-  outline: 2px solid #e8c547;
+  outline: 2px solid var(--oxtera-warn);
   outline-offset: 2px;
 }
 
@@ -103,10 +114,30 @@
   background: linear-gradient(145deg, #3a4a50 0%, #243036 100%);
 }
 
+#oxtera-robot-toggle.oxtera-alert {
+  animation: oxtera-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes oxtera-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 4px 18px rgba(0, 0, 0, 0.45),
+      0 0 0 2px rgba(232, 160, 74, 0.35);
+  }
+  50% {
+    box-shadow:
+      0 4px 22px rgba(0, 0, 0, 0.55),
+      0 0 0 6px rgba(232, 160, 74, 0.7);
+    background: linear-gradient(145deg, #4a4020 0%, #2a2210 100%);
+  }
+}
+
 #oxtera-robot-toggle svg {
   width: 28px;
   height: 28px;
   display: block;
+  pointer-events: none;
 }
 
 #oxtera-robot-panel {
@@ -114,13 +145,14 @@
   position: absolute;
   right: 0;
   top: 50%;
-  width: 220px;
+  width: 236px;
   padding: 16px 18px 18px;
   border-radius: 14px 0 0 14px;
-  background: linear-gradient(160deg, rgba(28, 34, 38, 0.97) 0%, rgba(16, 20, 22, 0.98) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(165deg, rgba(14, 36, 56, 0.98) 0%, rgba(6, 21, 37, 0.99) 100%);
+  border: 1px solid var(--oxtera-teal-dim);
   border-right: none;
-  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.4);
+  box-shadow: -10px 0 28px rgba(0, 0, 0, 0.45);
   transform: translate(100%, -50%);
   opacity: 0;
   transition:
@@ -134,25 +166,38 @@
 }
 
 #oxtera-robot-root.oxtera-open #oxtera-robot-toggle {
-  right: 220px;
+  right: 236px;
   margin-right: 0;
   border-radius: 14px 0 0 14px;
 }
 
 .oxtera-panel-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #9aa4a8;
+  color: var(--oxtera-teal);
   margin-bottom: 6px;
 }
 
 .oxtera-panel-status {
   font-size: 11px;
-  color: #e6b41e;
-  margin-bottom: 14px;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  color: var(--oxtera-warn);
+  margin-bottom: 12px;
   min-height: 14px;
+}
+
+.oxtera-overthink-flag {
+  font-size: 10px;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  letter-spacing: 0.06em;
+  color: var(--oxtera-navy);
+  background: var(--oxtera-warn);
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-bottom: 12px;
+  font-weight: 700;
 }
 
 .oxtera-metric {
@@ -164,22 +209,81 @@
 }
 
 .oxtera-metric-label {
-  font-size: 11px;
-  color: #8a9296;
+  font-size: 10px;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  letter-spacing: 0.08em;
+  color: var(--oxtera-teal-dim);
   margin-bottom: 3px;
 }
 
 .oxtera-metric-value {
   font-size: 22px;
-  font-weight: 650;
+  font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.15;
+  font-variant-numeric: tabular-nums;
 }
 
 .oxtera-metric-value.think {
-  color: #5dce7a;
+  color: var(--oxtera-teal-bright);
 }
 
 .oxtera-metric-value.blunder {
-  color: #ff5a4e;
+  color: var(--oxtera-danger);
+}
+
+/* White / Black picker for watched / replayed games */
+.oxtera-watch-slot {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(126, 184, 188, 0.35);
+}
+
+.oxtera-watch-slot[hidden] {
+  display: none !important;
+}
+
+.oxtera-watch-label {
+  font-size: 10px;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+  letter-spacing: 0.08em;
+  color: var(--oxtera-teal-dim);
+  margin-bottom: 8px;
+}
+
+#ox-watch-colors {
+  display: flex;
+  gap: 8px;
+}
+
+#ox-watch-colors button {
+  flex: 1;
+  cursor: pointer;
+  border: 1px solid var(--oxtera-teal-dim);
+  border-radius: 8px;
+  padding: 7px 0;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition:
+    outline 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+#ox-watch-colors button[data-color="white"] {
+  background: #e8f4f4;
+  color: var(--oxtera-navy);
+}
+
+#ox-watch-colors button[data-color="black"] {
+  background: var(--oxtera-navy-deep);
+  color: var(--oxtera-teal-bright);
+}
+
+#ox-watch-colors button.oxtera-active {
+  outline: 2px solid var(--oxtera-teal);
+  outline-offset: 1px;
+  border-color: var(--oxtera-teal);
 }
