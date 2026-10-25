@@ -1,16 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Chess Coaching HUD",
-  "version": "1.1.0",
+  "version": "1.3.2",
   "description": "Live think-time / blunder-risk HUD for chess.com and Lichess via the OxTera predict API.",
   "permissions": ["activeTab", "scripting"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [
-        "https://www.chess.com/game/*",
-        "https://www.chess.com/play/*",
-        "https://chess.com/game/*",
-        "https://chess.com/play/*"
+        "https://www.chess.com/*",
+        "https://chess.com/*"
       ],
       "js": [
         "shared/raw_game_state.js",
@@ -37,7 +38,6 @@
   ],
   "host_permissions": [
     "http://127.0.0.1:8000/*",
-    "http://localhost:8000/*",
-    "http://10.21.244.181:8000/*"
+    "http://localhost:8000/*"
   ]
 }

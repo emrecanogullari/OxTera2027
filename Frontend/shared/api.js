@@ -1,34 +1,56 @@
-/** POST /predict/live — no site DOM. */
+/** POST /predict/live via background worker only (never fetch from the page). */
 (function (root) {
   const Ox = (root.OxTeraCoach = root.OxTeraCoach || {});
 
-  Ox.BACKEND_BASE = "http://127.0.0.1:8000";
+  Ox.DEBUG = true;
+  Ox.API_CLIENT_VERSION = "1.3.2";
+
+  function sendPredictLive(payload) {
+    return new Promise((resolve, reject) => {
+      if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.sendMessage) {
+        reject(new Error("chrome.runtime unavailable — remove + re-load the unpacked extension"));
+        return;
+      }
+      chrome.runtime.sendMessage({ type: "predictLive", payload }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(
+            new Error(
+              chrome.runtime.lastError.message +
+                " — open chrome://extensions, Remove the HUD, Load unpacked again from Frontend/"
+            )
+          );
+          return;
+        }
+        if (!response) {
+          reject(new Error("empty response from extension background"));
+          return;
+        }
+        if (!response.ok) {
+          reject(new Error(`predict/live ${response.status}: ${response.error || "failed"}`));
+          return;
+        }
+        resolve(response);
+      });
+    });
+  }
 
   /**
    * @param {object} rawGameState
    * @returns {Promise<object>}
    */
-  Ox.DEBUG = true;
-
   Ox.predictLive = async function predictLive(rawGameState) {
     const payload = Object.assign({}, rawGameState, { debug: Ox.DEBUG !== false });
-    console.groupCollapsed("[OxTera] POST /predict/live — request (raw scrape)");
+    console.groupCollapsed(
+      `[OxTera ${Ox.API_CLIENT_VERSION}] predict/live via background proxy (not page fetch)`
+    );
     console.log(payload);
     console.groupEnd();
 
-    const res = await fetch(`${Ox.BACKEND_BASE}/predict/live`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`predict/live ${res.status}: ${detail}`);
-    }
-    const data = await res.json();
+    const response = await sendPredictLive(payload);
+    const data = response.data;
 
     console.groupCollapsed(
-      `[OxTera] predict/live — response p_blunder=${data.predictions?.p_blunder} engine=${data.debug?.engine_used}`
+      `[OxTera ${Ox.API_CLIENT_VERSION}] ok proxy=${response.proxyVersion} p_blunder=${data.predictions?.p_blunder} engine=${data.debug?.engine_used}`
     );
     console.log("predictions", data.predictions);
     console.log("model", data.model);

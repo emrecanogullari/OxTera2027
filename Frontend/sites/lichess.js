@@ -232,7 +232,7 @@
       const tick = () => {
         const state = adapter.readGameState();
         if (!state) return;
-        const sig = `${state.placement}|${state.ply}|${state.side_to_move}`;
+        const sig = `${state.game_id || ""}|${state.ply}|${state.side_to_move || ""}`;
         if (sig === lastSig) return;
         lastSig = sig;
         try {

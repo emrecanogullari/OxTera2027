@@ -25,9 +25,10 @@
     });
 
     hud.innerHTML = `
-      <div style="font-weight:700;font-size:14px;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:12px;color:#a0a0a0;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;">
+      <div style="font-weight:700;font-size:14px;letter-spacing:0.5px;text-transform:uppercase;margin-bottom:8px;color:#a0a0a0;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:6px;">
         Coach HUD
       </div>
+      <div id="hud-status" style="font-size:11px;color:#e6b41e;margin-bottom:10px;min-height:14px;">booting…</div>
       <div style="margin-bottom:12px;">
         <div style="font-size:12px;color:#8a8a8e;margin-bottom:4px;">Expected Thinking Time</div>
         <div id="hud-thinking-time" style="font-size:20px;font-weight:600;color:#4cd964;">-- s</div>
@@ -63,6 +64,11 @@
     });
   };
 
+  Ox.setHudStatus = function setHudStatus(text) {
+    const el = document.getElementById("hud-status");
+    if (el) el.textContent = text || "";
+  };
+
   /**
    * @param {{ predictions?: { time_spent_s?: number, p_blunder?: number } }} data
    */
@@ -77,5 +83,6 @@
     if (riskElem && preds.p_blunder !== undefined) {
       riskElem.textContent = `${Math.round(preds.p_blunder * 100)}%`;
     }
+    Ox.setHudStatus("live");
   };
 })(typeof globalThis !== "undefined" ? globalThis : window);

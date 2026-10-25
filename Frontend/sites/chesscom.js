@@ -33,7 +33,38 @@
   }
 
   function boardElement() {
-    return document.querySelector("#board-single") || document.querySelector("wc-chess-board");
+    return (
+      document.querySelector("wc-chess-board") ||
+      document.querySelector("#board-single") ||
+      document.querySelector("chess-board") ||
+      document.querySelector("[class*='board'][class*='board-']")
+    );
+  }
+
+  /** Query inside light DOM + open shadow roots (chess.com board is a web component). */
+  function queryAllDeep(root, selector) {
+    const out = [];
+    const visit = (node) => {
+      if (!node) return;
+      if (node.querySelectorAll) {
+        try {
+          out.push(...node.querySelectorAll(selector));
+        } catch (_) {
+          /* invalid selector in some roots */
+        }
+      }
+      const children = node.children || [];
+      for (const child of children) {
+        if (child.shadowRoot) visit(child.shadowRoot);
+      }
+      if (node.shadowRoot) visit(node.shadowRoot);
+    };
+    visit(root);
+    return out;
+  }
+
+  function queryDeep(root, selector) {
+    return queryAllDeep(root, selector)[0] || null;
   }
 
   function readColor() {
@@ -44,15 +75,47 @@
     }
     const board = boardElement();
     if (board && board.classList.contains("flipped")) return "black";
+    // Board present but colour classes not ready yet — assume white at bottom.
+    if (board) return "white";
     return null;
   }
 
+  /** Why readGameState() is null — logged while waiting for a live game. */
+  function diagnose() {
+    const board = boardElement();
+    const clocks = readClocks();
+    const tc = readTimeControl();
+    const ratings = readRatings();
+    const placement = placementFromPieces();
+    return {
+      board: !!board,
+      color: readColor(),
+      clock_self_s: clocks.clock_self_s,
+      clock_opp_s: clocks.clock_opp_s,
+      time_control: tc,
+      elo_self: ratings.elo_self,
+      placement: placement ? placement.slice(0, 24) + "…" : null,
+    };
+  }
+
   function readClocks() {
-    const bottom = document.querySelector(".clock-bottom .clock-time-monospace");
-    const top = document.querySelector(".clock-top .clock-time-monospace");
+    const bottom =
+      queryDeep(document, ".clock-bottom .clock-time-monospace") ||
+      queryDeep(document, ".clock-bottom") ||
+      document.querySelector(".clock-component.clock-bottom") ||
+      document.querySelector("[class*='clock-bottom']");
+    const top =
+      queryDeep(document, ".clock-top .clock-time-monospace") ||
+      queryDeep(document, ".clock-top") ||
+      document.querySelector(".clock-component.clock-top") ||
+      document.querySelector("[class*='clock-top']");
     return {
       clock_self_s: parseClockText(textOf(bottom)),
       clock_opp_s: parseClockText(textOf(top)),
+      _bottomFound: !!bottom,
+      _topFound: !!top,
+      _bottomText: textOf(bottom).slice(0, 20),
+      _topText: textOf(top).slice(0, 20),
     };
   }
 
@@ -99,7 +162,12 @@
     if (!board) return null;
     const grid = Array.from({ length: 8 }, () => Array(8).fill(""));
     let count = 0;
-    for (const piece of board.querySelectorAll(":scope > .piece")) {
+    // Prefer direct children, then any .piece under board / shadow tree.
+    let pieces = board.querySelectorAll(":scope > .piece");
+    if (!pieces.length) pieces = board.querySelectorAll(".piece");
+    if (!pieces.length && board.shadowRoot) pieces = board.shadowRoot.querySelectorAll(".piece");
+    if (!pieces.length) pieces = queryAllDeep(board, ".piece");
+    for (const piece of pieces) {
       const cls = String(piece.className).split(/\s+/);
       const square = cls.find((c) => /^square-\d{2}$/.test(c));
       const kind = cls.find((c) => /^[wb][pnbrqk]$/.test(c));
@@ -218,10 +286,10 @@
       if (!color) return null;
       const clocks = readClocks();
       if (clocks.clock_self_s == null || clocks.clock_opp_s == null) return null;
-      const tc = readTimeControl();
-      if (!tc) return null;
+      // Info-panel TC is often missing until the user opens it — default blitz 3+0.
+      const tc = readTimeControl() || { base_s: 180, inc_s: 0, _defaulted: true };
       const ratings = readRatings();
-      if (ratings.elo_self == null) return null;
+      const elo_self = ratings.elo_self != null ? ratings.elo_self : 1500;
       const placement = placementFromPieces();
       if (!placement) return null;
       const moves = readMoves(placement);
@@ -239,7 +307,7 @@
             color,
             base_s: tc.base_s,
             inc_s: tc.inc_s,
-            elo_self: ratings.elo_self,
+            elo_self,
             elo_opp: ratings.elo_opp,
             clock_self_s: clocks.clock_self_s,
             clock_opp_s: clocks.clock_opp_s,
@@ -255,12 +323,47 @@
     onTurnStart(callback) {
       let lastSig = "";
       let pending = null;
+      let lastDiagAt = 0;
+      let lastHref = location.href;
       const tick = () => {
+        if (location.href !== lastHref) {
+          lastHref = location.href;
+          lastSig = "";
+          console.warn("[OxTera chesscom] URL changed →", lastHref);
+          if (typeof Ox.setHudStatus === "function") {
+            Ox.setHudStatus("navigated — rescanning board…");
+          }
+        }
         const state = adapter.readGameState();
-        if (!state) return;
-        const sig = `${state.fen}|${state.ply}|${state.color}`;
+        if (!state) {
+          const now = Date.now();
+          if (now - lastDiagAt > 2000) {
+            lastDiagAt = now;
+            const d = diagnose();
+            // warn so it shows when the console filter hides "Info"
+            console.warn("[OxTera chesscom] waiting for live game DOM", d);
+            if (typeof Ox.setHudStatus === "function") {
+              const missing = [];
+              if (!d.board) missing.push("board");
+              if (d.clock_self_s == null || d.clock_opp_s == null) missing.push("clocks");
+              if (!d.placement) missing.push("pieces");
+              Ox.setHudStatus("waiting: " + (missing.join(", ") || "game fields"));
+            }
+          }
+          return;
+        }
+        // Key on game+ply only — fen/clock flicker must not re-hit Stockfish.
+        const sig = `${state.game_id || ""}|${state.ply}|${state.color}`;
         if (sig === lastSig) return;
         lastSig = sig;
+        console.warn("[OxTera chesscom] game state ready", {
+          ply: state.ply,
+          color: state.color,
+          clocks: [state.clock_self_s, state.clock_opp_s],
+          tc: `${state.base_s}+${state.inc_s}`,
+          href: location.href,
+        });
+        if (typeof Ox.setHudStatus === "function") Ox.setHudStatus("predicting…");
         try {
           callback(state);
         } catch (err) {
@@ -273,16 +376,17 @@
       };
       adapter._timer = setInterval(tick, 500);
       adapter._observer = new MutationObserver(schedule);
-      const board = boardElement() || document.body;
-      adapter._observer.observe(board, {
+      adapter._observer.observe(document.body, {
         childList: true,
         subtree: true,
         attributes: true,
         attributeFilter: ["class", "style"],
       });
-      const list = document.querySelector("wc-simple-move-list, .move-list");
-      if (list) adapter._observer.observe(list, { childList: true, subtree: true, attributes: true });
-      setTimeout(tick, 400);
+      // SPA: popstate + periodic href check inside tick
+      window.addEventListener("popstate", schedule);
+      setTimeout(tick, 200);
+      setTimeout(tick, 1000);
+      setTimeout(tick, 2500);
     },
 
     destroy() {
