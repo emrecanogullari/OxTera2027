@@ -9,7 +9,7 @@
  * Override from the service-worker console, e.g.:
  *   chrome.storage.local.set({ backendBase: "http://10.0.0.5:8000" })
  */
-const DEFAULT_BACKEND_BASE = "http://127.0.0.1:8000";
+const DEFAULT_BACKEND_BASE = "http://10.21.244.181:8000";
 const PROXY_VERSION = "1.4.0";
 
 function uuid() {
